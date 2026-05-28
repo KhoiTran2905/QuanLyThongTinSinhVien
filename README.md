@@ -1,10 +1,9 @@
-# 📚 PTIT Student Management System
 
-> **Hệ thống Quản lý Thông tin Sinh viên** – Học viện Công nghệ Bưu chính Viễn thông (PTIT)
 
-Hệ thống web hiện đại giúp quản lý toàn diện thông tin học vụ sinh viên, bao gồm cổng dành cho **Quản trị viên** và **Sinh viên**, được xây dựng theo mô hình **REST API + Next.js**.
+**Hệ thống Quản lý Thông tin Sinh viên** – Học viện Công nghệ Bưu chính Viễn thông (PTIT)
 
----
+Hệ thống web quản lý thông tin học vụ sinh viên, bao gồm cổng dành cho **Quản trị viên** và **Sinh viên**, được xây dựng theo mô hình **REST API + Next.js**.
+
 
 ## 🗂️ Mục lục
 
