@@ -2648,3 +2648,238 @@
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
 }
+
+.filter-select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background-color: var(--card);
+  cursor: pointer;
+  min-width: 140px;
+  color: var(--foreground);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.1);
+}
+
+.filter-select-sm {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  background-color: var(--card);
+  cursor: pointer;
+  color: var(--foreground);
+}
+
+/* ===== GPA Badge ===== */
+.gpa-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gpa-badge.excellent {
+  background: rgba(22, 163, 74, 0.1);
+  color: #16a34a;
+}
+
+.gpa-badge.good {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+.gpa-badge.average {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.gpa-badge.poor {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+/* ===== Action Buttons ===== */
+.action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-success {
+  color: #16a34a !important;
+}
+
+.text-danger {
+  color: #dc2626 !important;
+}
+
+/* ===== Admin Toolbar ===== */
+.admin-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== Tags ===== */
+.tags-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(185, 28, 28, 0.1);
+  color: var(--primary);
+}
+
+.tag-secondary {
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+/* ===== Settings Layout ===== */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settings-sidebar {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  position: sticky;
+  top: 80px;
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+/* ===== Form Styles ===== */
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background-color: white;
+  cursor: pointer;
+  color: var(--foreground);
+  transition: all 0.2s;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.1);
+}
+
+.form-help {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+
+/* ===== Table Extra ===== */
+.student-email {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.table-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pagination-info {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pagination-ellipsis {
+  padding: 0 4px;
+  color: var(--muted-foreground);
+}
+
+/* ===== Misc ===== */
+.badge-outline {
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--foreground);
+}
+
+.badge-secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+}

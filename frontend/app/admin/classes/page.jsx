@@ -1,82 +1,97 @@
+
 "use client"
 
 import { useState } from "react"
 import { Header } from "@/components/dashboard/header"
-import { SimpleBarChart, DonutChart, MultiBarChart } from "@/components/dashboard/charts"
+import { SimpleBarChart, DonutChart } from "@/components/dashboard/charts"
+import { useApi, usePaginatedApi, useMutation } from "@/hooks/use-api"
+import { classService } from "@/lib/services/adminService"
 import {
-  ClipboardList,
-  Search,
-  Plus,
-  Eye,
-  Edit,
-  Users,
-  BookOpen,
-  Calendar,
-  TrendingUp,
-  Award,
-  Building,
-  GraduationCap
+  ClipboardList, Search, Plus, Eye, Edit, Trash2,
+  Users, BookOpen, Calendar, TrendingUp, Award,
+  Building, GraduationCap, ChevronLeft, ChevronRight
 } from "lucide-react"
 
-const classes = [
-  { id: "D21CQCN01-B", name: "CNTT K21 - Nhóm 1", major: "Công nghệ thông tin", students: 45, advisor: "PGS.TS. Nguyễn Văn Minh", year: 2021, status: "active", gpa: 3.25 },
-  { id: "D21CQCN02-B", name: "CNTT K21 - Nhóm 2", major: "Công nghệ thông tin", students: 42, advisor: "TS. Trần Thị Hương", year: 2021, status: "active", gpa: 3.18 },
-  { id: "D21CQAT01-B", name: "ATTT K21 - Nhóm 1", major: "An toàn thông tin", students: 38, advisor: "ThS. Ngô Văn Hải", year: 2021, status: "active", gpa: 3.32 },
-  { id: "D21CQVT01-B", name: "Viễn thông K21", major: "Viễn thông", students: 35, advisor: "ThS. Lê Hoàng Nam", year: 2021, status: "active", gpa: 3.15 },
-  { id: "D22CQCN01-B", name: "CNTT K22 - Nhóm 1", major: "Công nghệ thông tin", students: 48, advisor: "TS. Hoàng Thị Lan", year: 2022, status: "active", gpa: 3.28 },
-  { id: "D20CQCN01-B", name: "CNTT K20 - Nhóm 1", major: "Công nghệ thông tin", students: 40, advisor: "PGS.TS. Phạm Văn Đức", year: 2020, status: "graduated", gpa: 3.42 },
-]
-
-const majorDistribution = [
-  { name: "CNTT", value: 5420, color: "#b91c1c" },
-  { name: "ATTT", value: 2100, color: "#2563eb" },
-  { name: "Viễn thông", value: 3200, color: "#16a34a" },
-  { name: "Điện tử", value: 2500, color: "#f59e0b" },
-  { name: "Đa phương tiện", value: 2200, color: "#8b5cf6" },
-]
-
-const yearlyData = [
-  { name: "K2020", CNTT: 42, ATTT: 15, VT: 20, DT: 18 },
-  { name: "K2021", CNTT: 48, ATTT: 18, VT: 22, DT: 20 },
-  { name: "K2022", CNTT: 52, ATTT: 20, VT: 24, DT: 22 },
-  { name: "K2023", CNTT: 55, ATTT: 22, VT: 25, DT: 23 },
-  { name: "K2024", CNTT: 58, ATTT: 24, VT: 26, DT: 24 },
-]
-
-const classPerformance = [
-  { name: "D21CQCN01-B", gpa: 3.45 },
-  { name: "D21CQAT01-B", gpa: 3.38 },
-  { name: "D22CQCN01-B", gpa: 3.32 },
-  { name: "D21CQCN02-B", gpa: 3.28 },
-  { name: "D21CQVT01-B", gpa: 3.22 },
-]
-
-const topClasses = [
-  { name: "D21CQCN01-B", major: "CNTT K21", gpa: 3.45, students: 45 },
-  { name: "D21CQAT01-B", major: "ATTT K21", gpa: 3.38, students: 38 },
-  { name: "D22CQCN01-B", major: "CNTT K22", gpa: 3.32, students: 48 },
-  { name: "D21CQCN02-B", major: "CNTT K21", gpa: 3.28, students: 42 },
-  { name: "D21CQVT01-B", major: "VT K21", gpa: 3.22, students: 35 },
-]
-
 export default function ClassesPage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [majorFilter, setMajorFilter] = useState("all")
-  const [yearFilter, setYearFilter] = useState("all")
+  const [searchInput, setSearchInput] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [successMsg, setSuccessMsg] = useState("")
+  const [errorMsg, setErrorMsg] = useState("")
 
-  const filteredClasses = classes.filter(cls => {
-    const matchSearch = cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       cls.id.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchMajor = majorFilter === "all" || cls.major.toLowerCase().includes(majorFilter)
-    const matchYear = yearFilter === "all" || cls.year.toString() === yearFilter
-    return matchSearch && matchMajor && matchYear
+  const {
+    data: classes,
+    pagination,
+    loading,
+    error,
+    updateParams,
+    goToPage,
+    refetch,
+  } = usePaginatedApi(classService.getAll, { page: 1, limit: 12 })
+
+  const { data: stats, loading: statsLoading } = useApi(
+    classService.getStats, [], { defaultData: {} }
+  )
+
+  const { mutate: deleteClass, loading: deleting } = useMutation(
+    classService.delete,
+    {
+      onSuccess: function () {
+        setSuccessMsg("Xóa lớp học thành công")
+        setConfirmDelete(null)
+        refetch()
+        setTimeout(function () { setSuccessMsg("") }, 3000)
+      },
+      onError: function (err) {
+        setErrorMsg(err.message || "Lỗi khi xóa lớp học")
+        setConfirmDelete(null)
+        setTimeout(function () { setErrorMsg("") }, 3000)
+      },
+    }
+  )
+
+  function handleSearch(e) {
+    e.preventDefault()
+    updateParams({ search: searchInput })
+  }
+
+  var classList = Array.isArray(classes) ? classes : []
+  var totalCount = pagination ? pagination.totalItems : 0
+  var currentPage = pagination ? pagination.currentPage : 1
+  var totalPages = pagination ? pagination.totalPages : 1
+
+  var topClasses = Array.isArray(stats && stats.topClasses)
+    ? stats.topClasses
+    : []
+
+  var topClassesChart = topClasses.map(function (c) {
+    return { name: c.class_code, gpa: parseFloat(c.avg_gpa) || 0 }
   })
 
   return (
     <div className="dashboard-content">
       <Header title="Quản lý lớp học" />
-      
+
       <div className="dashboard-body">
+        {successMsg && (
+          <div style={{
+            padding: "0.75rem 1rem", background: "#dcfce7",
+            border: "1px solid #16a34a", borderRadius: "0.5rem",
+            color: "#166534", fontSize: "0.875rem",
+          }}>
+            {successMsg}
+          </div>
+        )}
+        {errorMsg && (
+          <div style={{
+            padding: "0.75rem 1rem", background: "#fee2e2",
+            border: "1px solid #dc2626", borderRadius: "0.5rem",
+            color: "#991b1b", fontSize: "0.875rem",
+          }}>
+            {errorMsg}
+          </div>
+        )}
+
         {/* Summary Stats */}
         <div className="summary-grid">
           <div className="summary-item">
@@ -84,12 +99,10 @@ export default function ClassesPage() {
               <div className="summary-item-icon primary">
                 <ClipboardList size={20} />
               </div>
-              <div className="summary-item-trend positive">
-                <TrendingUp size={14} />
-                +8%
-              </div>
             </div>
-            <div className="summary-item-value">245</div>
+            <div className="summary-item-value">
+              {statsLoading ? "..." : (stats && stats.total) || 0}
+            </div>
             <div className="summary-item-label">Tổng số lớp</div>
           </div>
           <div className="summary-item">
@@ -97,12 +110,10 @@ export default function ClassesPage() {
               <div className="summary-item-icon success">
                 <Users size={20} />
               </div>
-              <div className="summary-item-trend positive">
-                <TrendingUp size={14} />
-                +12%
-              </div>
             </div>
-            <div className="summary-item-value">15,420</div>
+            <div className="summary-item-value">
+              {statsLoading ? "..." : (stats && stats.totalStudents) || 0}
+            </div>
             <div className="summary-item-label">Tổng sinh viên</div>
           </div>
           <div className="summary-item">
@@ -111,7 +122,9 @@ export default function ClassesPage() {
                 <BookOpen size={20} />
               </div>
             </div>
-            <div className="summary-item-value">8</div>
+            <div className="summary-item-value">
+              {statsLoading ? "..." : (stats && stats.totalMajors) || 0}
+            </div>
             <div className="summary-item-label">Ngành học</div>
           </div>
           <div className="summary-item">
@@ -120,106 +133,94 @@ export default function ClassesPage() {
                 <Calendar size={20} />
               </div>
             </div>
-            <div className="summary-item-value">5</div>
+            <div className="summary-item-value">
+              {statsLoading ? "..." : (stats && stats.activeYears) || 0}
+            </div>
             <div className="summary-item-label">Khóa đang học</div>
           </div>
         </div>
 
-        {/* Charts Row 1 */}
-        <div className="data-grid-responsive" style={{ marginTop: "24px" }}>
-          {/* Classes by Year */}
-          <div className="chart-card">
-            <div className="chart-card-header">
-              <h3 className="chart-card-title">
-                <Calendar />
-                Số lớp theo khóa nhập học
-              </h3>
-            </div>
-            <div className="chart-card-body">
-              <MultiBarChart 
-                data={yearlyData} 
-                dataKeys={["CNTT", "ATTT", "VT", "DT"]}
-                xKey="name"
-                colors={["#b91c1c", "#2563eb", "#16a34a", "#f59e0b"]}
-                height={280}
-              />
-            </div>
-          </div>
-
-          {/* Major Distribution */}
-          <div className="chart-card">
-            <div className="chart-card-header">
-              <h3 className="chart-card-title">
-                <Building />
-                Phân bố theo ngành
-              </h3>
-            </div>
-            <div className="chart-card-body">
-              <DonutChart 
-                data={majorDistribution} 
-                height={200}
-                centerText="245"
-                centerSubtext="Lop"
-              />
-              <div className="chart-legend">
-                {majorDistribution.map((item, index) => (
-                  <div key={index} className="chart-legend-item">
-                    <span className="chart-legend-dot" style={{ backgroundColor: item.color }}></span>
-                    <span>{item.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Row 2 */}
+        {/* Charts */}
         <div className="data-grid-2" style={{ marginTop: "24px" }}>
-          {/* Class Performance */}
           <div className="chart-card">
             <div className="chart-card-header">
               <h3 className="chart-card-title">
-                <Award />
-                GPA trung bình theo lớp
+                <Award /> GPA trung bình - Top lớp
               </h3>
             </div>
             <div className="chart-card-body">
-              <SimpleBarChart 
-                data={classPerformance} 
-                dataKey="gpa"
-                xKey="name"
-                color="#16a34a"
-                height={220}
-              />
+              {statsLoading ? (
+                <div style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "2rem" }}>
+                  Đang tải...
+                </div>
+              ) : topClassesChart.length === 0 ? (
+                <div style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "2rem" }}>
+                  Chưa có dữ liệu
+                </div>
+              ) : (
+                <SimpleBarChart
+                  data={topClassesChart}
+                  dataKey="gpa"
+                  xKey="name"
+                  color="#16a34a"
+                  height={220}
+                />
+              )}
             </div>
           </div>
 
-          {/* Top Classes */}
           <div className="chart-card">
             <div className="chart-card-header">
               <h3 className="chart-card-title">
-                <GraduationCap />
-                Top lớp học xuất sắc
+                <GraduationCap /> Top lớp xuất sắc
               </h3>
             </div>
             <div className="chart-card-body">
-              <div className="ranking-list">
-                {topClasses.map((cls, index) => (
-                  <div key={index} className="ranking-item">
-                    <div className={`ranking-position ${index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : 'normal'}`}>
-                      {index + 1}
-                    </div>
-                    <div className="ranking-info">
-                      <div className="ranking-name">{cls.name}</div>
-                      <div className="ranking-meta">{cls.major} | {cls.students} SV</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      <div className="ranking-value">{cls.gpa.toFixed(2)}</div>
-                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>GPA</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {statsLoading ? (
+                <div style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "2rem" }}>
+                  Đang tải...
+                </div>
+              ) : (
+                <div className="ranking-list">
+                  {topClasses.map(function (cls, index) {
+                    var posClass = index === 0 ? "gold"
+                      : index === 1 ? "silver"
+                      : index === 2 ? "bronze"
+                      : "normal"
+                    var gpa = parseFloat(cls.avg_gpa) || 0
+                    var gpaColor = gpa >= 3.5 ? "#16a34a"
+                      : gpa >= 3.0 ? "#2563eb"
+                      : "#f59e0b"
+
+                    return (
+                      <div key={cls.id || index} className="ranking-item">
+                        <div className={"ranking-position " + posClass}>
+                          {index + 1}
+                        </div>
+                        <div className="ranking-info">
+                          <div className="ranking-name">{cls.class_code}</div>
+                          <div className="ranking-meta">
+                            {cls.major_name} | {cls.total_students || 0} SV
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div className="ranking-value" style={{ color: gpaColor }}>
+                            {gpa.toFixed(2)}
+                          </div>
+                          <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                            GPA
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {topClasses.length === 0 && (
+                    <p style={{ color: "var(--muted-foreground)", textAlign: "center" }}>
+                      Chưa có dữ liệu
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -229,177 +230,282 @@ export default function ClassesPage() {
           <div className="card-content">
             <div className="admin-toolbar">
               <div className="admin-toolbar-left">
-                <div className="search-box">
-                  <Search className="search-icon" />
-                  <input
-                    type="text"
-                    className="search-input"
-                    placeholder="Tìm kiếm lớp học..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                <select 
+                <form onSubmit={handleSearch} style={{ display: "flex", gap: "0.5rem" }}>
+                  <div className="search-box">
+                    <Search className="search-icon" />
+                    <input
+                      type="text"
+                      className="search-input"
+                      placeholder="Tìm kiếm lớp học..."
+                      value={searchInput}
+                      onChange={function (e) { setSearchInput(e.target.value) }}
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-outline btn-sm">
+                    Tìm
+                  </button>
+                </form>
+                <select
                   className="filter-select"
-                  value={majorFilter}
-                  onChange={(e) => setMajorFilter(e.target.value)}
+                  value={statusFilter}
+                  onChange={function (e) {
+                    setStatusFilter(e.target.value)
+                    updateParams({ status: e.target.value })
+                  }}
                 >
-                  <option value="all">Tất cả ngành</option>
-                  <option value="cong nghe thong tin">Công nghệ thông tin</option>
-                  <option value="an toan thong tin">An toàn thông tin</option>
-                  <option value="vien thong">Viễn thông</option>
-                </select>
-                <select 
-                  className="filter-select"
-                  value={yearFilter}
-                  onChange={(e) => setYearFilter(e.target.value)}
-                >
-                  <option value="all">Tất cả khóa</option>
-                  <option value="2024">K2024</option>
-                  <option value="2023">K2023</option>
-                  <option value="2022">K2022</option>
-                  <option value="2021">K2021</option>
-                  <option value="2020">K2020</option>
+                  <option value="all">Tất cả trạng thái</option>
+                  <option value="Đang học">Đang học</option>
+                  <option value="Đã tốt nghiệp">Đã tốt nghiệp</option>
                 </select>
               </div>
               <div className="admin-toolbar-right">
                 <button className="btn btn-primary btn-sm">
-                  <Plus />
-                  Thêm lớp
+                  <Plus /> Thêm lớp
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Classes Grid - Enhanced Visual Cards */}
-        <div style={{ marginTop: "24px" }}>
-          <div className="chart-card">
-            <div className="chart-card-header">
-              <h3 className="chart-card-title">
-                <ClipboardList />
-                Danh sách lớp học
-              </h3>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <span className="badge badge-success">{classes.filter(c => c.status === "active").length} đang học</span>
-                <span className="badge badge-info">{classes.filter(c => c.status === "graduated").length} đã tốt nghiệp</span>
+        {/* Classes Grid */}
+        <div className="chart-card" style={{ marginTop: "16px" }}>
+          <div className="chart-card-header">
+            <h3 className="chart-card-title">
+              <ClipboardList /> Danh sách lớp học
+            </h3>
+            <span className="badge badge-primary">{totalCount} lớp</span>
+          </div>
+          <div className="chart-card-body" style={{ padding: "20px" }}>
+            {error && (
+              <div style={{ color: "#dc2626", marginBottom: "1rem" }}>
+                Lỗi: {error}
               </div>
-            </div>
-            <div className="chart-card-body" style={{ padding: "20px" }}>
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", 
-                gap: "16px" 
+            )}
+            {loading ? (
+              <div style={{ textAlign: "center", padding: "3rem", color: "var(--muted-foreground)" }}>
+                Đang tải...
+              </div>
+            ) : classList.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "3rem", color: "var(--muted-foreground)" }}>
+                Không có dữ liệu
+              </div>
+            ) : (
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                gap: "16px",
               }}>
-                {filteredClasses.map((cls) => (
-                  <div key={cls.id} style={{
-                    padding: "20px",
-                    borderRadius: "12px",
-                    border: cls.status === "active" ? "1px solid rgba(37, 99, 235, 0.2)" : "1px solid rgba(139, 92, 246, 0.2)",
-                    background: cls.status === "active" 
-                      ? "linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(37, 99, 235, 0.02) 100%)" 
-                      : "linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(139, 92, 246, 0.02) 100%)",
-                    transition: "all 0.2s",
-                  }}>
-                    {/* Header */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-                      <div style={{
-                        width: "48px",
-                        height: "48px",
+                {classList.map(function (cls) {
+                  var isActive = cls.status === "Đang học"
+                  var gpa = parseFloat(cls.avg_gpa) || 0
+                  var gpaLabel = gpa >= 3.5 ? "Xuất sắc"
+                    : gpa >= 3.2 ? "Giỏi"
+                    : gpa >= 2.5 ? "Khá"
+                    : "Trung bình"
+                  var gpaColor = gpa >= 3.5 ? "#16a34a"
+                    : gpa >= 3.2 ? "#2563eb"
+                    : "#f59e0b"
+                  var gpaBg = gpa >= 3.5 ? "rgba(22,163,74,0.1)"
+                    : gpa >= 3.2 ? "rgba(37,99,235,0.1)"
+                    : "rgba(245,158,11,0.1)"
+
+                  return (
+                    <div
+                      key={cls.id}
+                      style={{
+                        padding: "20px",
                         borderRadius: "12px",
-                        background: cls.status === "active" ? "rgba(37, 99, 235, 0.1)" : "rgba(139, 92, 246, 0.1)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}>
-                        <GraduationCap size={24} style={{ color: cls.status === "active" ? "#2563eb" : "#8b5cf6" }} />
-                      </div>
-                      <span className={`badge ${cls.status === "active" ? "badge-success" : "badge-info"}`}>
-                        {cls.status === "active" ? "Đang học" : "Đã tốt nghiệp"}
-                      </span>
-                    </div>
-
-                    {/* Class Info */}
-                    <div style={{ marginBottom: "16px" }}>
-                      <p style={{ fontSize: "12px", color: "var(--muted-foreground)", fontWeight: "600", marginBottom: "4px" }}>{cls.id}</p>
-                      <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "6px" }}>{cls.name}</h3>
-                      <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{cls.major}</p>
-                    </div>
-
-                    {/* Info Grid */}
-                    <div style={{ 
-                      display: "grid", 
-                      gridTemplateColumns: "1fr 1fr", 
-                      gap: "12px",
-                      padding: "12px",
-                      borderRadius: "8px",
-                      background: "var(--accent)",
-                      marginBottom: "16px"
-                    }}>
-                      <div>
-                        <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>CVHT</p>
-                        <p style={{ fontSize: "12px", fontWeight: "600" }}>{cls.advisor.split('. ').pop()}</p>
-                      </div>
-                      <div>
-                        <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>Khóa</p>
-                        <p style={{ fontSize: "12px", fontWeight: "600" }}>K{cls.year}</p>
-                      </div>
-                      <div>
-                        <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>Sĩ số</p>
-                        <p style={{ fontSize: "12px", fontWeight: "600" }}>{cls.students} sinh viên</p>
-                      </div>
-                      <div>
-                        <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>GPA TB</p>
-                        <p style={{ 
-                          fontSize: "12px", 
-                          fontWeight: "700",
-                          color: cls.gpa >= 3.5 ? "#16a34a" : cls.gpa >= 3.0 ? "#2563eb" : "#f59e0b"
-                        }}>{cls.gpa.toFixed(2)}</p>
-                      </div>
-                    </div>
-
-                    {/* GPA Progress Bar */}
-                    <div style={{ marginBottom: "16px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                        <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>Điểm trung bình lớp</span>
-                        <span style={{ 
-                          fontSize: "12px", 
-                          fontWeight: "700",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          background: cls.gpa >= 3.5 ? "rgba(22, 163, 74, 0.1)" : cls.gpa >= 3.0 ? "rgba(37, 99, 235, 0.1)" : "rgba(245, 158, 11, 0.1)",
-                          color: cls.gpa >= 3.5 ? "#16a34a" : cls.gpa >= 3.0 ? "#2563eb" : "#f59e0b"
+                        border: isActive
+                          ? "1px solid rgba(37,99,235,0.2)"
+                          : "1px solid rgba(139,92,246,0.2)",
+                        background: isActive
+                          ? "linear-gradient(135deg, rgba(37,99,235,0.05) 0%, rgba(37,99,235,0.02) 100%)"
+                          : "linear-gradient(135deg, rgba(139,92,246,0.05) 0%, rgba(139,92,246,0.02) 100%)",
+                      }}
+                    >
+                      {/* Header */}
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
+                        <div style={{
+                          width: "48px", height: "48px", borderRadius: "12px",
+                          background: isActive ? "rgba(37,99,235,0.1)" : "rgba(139,92,246,0.1)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
                         }}>
-                          {cls.gpa >= 3.5 ? "Xuất sắc" : cls.gpa >= 3.0 ? "Giỏi" : "Khá"}
+                          <GraduationCap
+                            size={24}
+                            style={{ color: isActive ? "#2563eb" : "#8b5cf6" }}
+                          />
+                        </div>
+                        <span className={"badge " + (isActive ? "badge-success" : "badge-info")}>
+                          {cls.status}
                         </span>
                       </div>
-                      <div style={{ height: "6px", borderRadius: "3px", background: "var(--accent)" }}>
-                        <div style={{ 
-                          width: `${(cls.gpa / 4) * 100}%`, 
-                          height: "100%", 
-                          borderRadius: "3px",
-                          background: cls.gpa >= 3.5 ? "#16a34a" : cls.gpa >= 3.0 ? "#2563eb" : "#f59e0b"
-                        }}></div>
+
+                      {/* Info */}
+                      <p style={{ fontSize: "12px", color: "var(--muted-foreground)", fontWeight: 600, marginBottom: "4px" }}>
+                        {cls.class_code}
+                      </p>
+                      <h3 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "4px" }}>
+                        {cls.name}
+                      </h3>
+                      <p style={{ fontSize: "13px", color: "var(--muted-foreground)", marginBottom: "12px" }}>
+                        {cls.major_name || "—"}
+                      </p>
+
+                      {/* Stats Grid */}
+                      <div style={{
+                        display: "grid", gridTemplateColumns: "1fr 1fr",
+                        gap: "10px", padding: "12px", borderRadius: "8px",
+                        background: "var(--accent)", marginBottom: "12px",
+                      }}>
+                        <div>
+                          <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>
+                            CVHT
+                          </p>
+                          <p style={{ fontSize: "12px", fontWeight: 600 }}>
+                            {cls.advisor_name
+                              ? cls.advisor_name.split(" ").slice(-2).join(" ")
+                              : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>
+                            Khóa
+                          </p>
+                          <p style={{ fontSize: "12px", fontWeight: 600 }}>
+                            {cls.academic_year || "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>
+                            Sĩ số
+                          </p>
+                          <p style={{ fontSize: "12px", fontWeight: 600 }}>
+                            {cls.total_students || 0} SV
+                          </p>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginBottom: "2px" }}>
+                            GPA TB
+                          </p>
+                          <p style={{ fontSize: "12px", fontWeight: 700, color: gpaColor }}>
+                            {gpa > 0 ? gpa.toFixed(2) : "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* GPA Bar */}
+                      {gpa > 0 && (
+                        <div style={{ marginBottom: "14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
+                            <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+                              Điểm trung bình lớp
+                            </span>
+                            <span style={{
+                              fontSize: "11px", fontWeight: 700,
+                              padding: "2px 8px", borderRadius: "4px",
+                              background: gpaBg, color: gpaColor,
+                            }}>
+                              {gpaLabel}
+                            </span>
+                          </div>
+                          <div style={{ height: "5px", borderRadius: "3px", background: "var(--accent)" }}>
+                            <div style={{
+                              width: ((gpa / 4) * 100) + "%",
+                              height: "100%", borderRadius: "3px",
+                              background: gpaColor,
+                            }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button className="btn btn-outline btn-sm" style={{ flex: 1 }}>
+                          <Eye size={14} /> Chi tiết
+                        </button>
+                        <button className="btn btn-outline btn-sm" style={{ flex: 1 }}>
+                          <Edit size={14} /> Sửa
+                        </button>
+                        <button
+                          className="btn btn-outline btn-sm"
+                          style={{ color: "#dc2626" }}
+                          onClick={function () { setConfirmDelete(cls) }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
+                  )
+                })}
+              </div>
+            )}
 
-                    {/* Actions */}
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button className="btn btn-outline btn-sm" style={{ flex: 1 }}>
-                        <Eye size={14} />
-                        Chi tiết
-                      </button>
-                      <button className="btn btn-outline btn-sm" style={{ flex: 1 }}>
-                        <Edit size={14} />
-                        Sửa
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            {/* Pagination */}
+            {!loading && totalPages > 1 && (
+              <div style={{
+                marginTop: "20px", display: "flex",
+                justifyContent: "center", gap: "0.5rem",
+              }}>
+                <button
+                  className="btn btn-outline btn-sm btn-icon"
+                  onClick={function () { goToPage(currentPage - 1) }}
+                  disabled={!pagination || !pagination.hasPrevPage}
+                >
+                  <ChevronLeft />
+                </button>
+                <span style={{ padding: "0.375rem 0.75rem", fontSize: "0.875rem" }}>
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  className="btn btn-outline btn-sm btn-icon"
+                  onClick={function () { goToPage(currentPage + 1) }}
+                  disabled={!pagination || !pagination.hasNextPage}
+                >
+                  <ChevronRight />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Confirm Delete */}
+        {confirmDelete && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 100,
+          }}>
+            <div style={{
+              background: "var(--card)", borderRadius: "0.75rem",
+              padding: "2rem", maxWidth: "400px", width: "90%",
+            }}>
+              <h3 style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+                Xác nhận xóa
+              </h3>
+              <p style={{ color: "var(--muted-foreground)", marginBottom: "1.5rem" }}>
+                Bạn có chắc muốn xóa lớp{" "}
+                <strong>{confirmDelete.name}</strong> ({confirmDelete.class_code})?
+              </p>
+              <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+                <button
+                  className="btn btn-outline"
+                  onClick={function () { setConfirmDelete(null) }}
+                  disabled={deleting}
+                >
+                  Hủy
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ background: "#dc2626" }}
+                  onClick={function () { deleteClass(confirmDelete.id) }}
+                  disabled={deleting}
+                >
+                  {deleting ? "Đang xóa..." : "Xóa"}
+                </button>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

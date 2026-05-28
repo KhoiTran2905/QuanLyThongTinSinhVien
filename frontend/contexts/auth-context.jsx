@@ -1,116 +1,328 @@
+
+// frontend/contexts/auth-context.jsx
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 const AuthContext = createContext(undefined);
 
-// Mock user database
-const MOCK_USERS = [
-  {
-    id: "admin-001",
-    username: "admin",
-    password: "admin123",
-    name: "Quản trị viên",
-    role: "admin",
-    email: "admin@ptit.edu.vn",
-  },
-  {
-    id: "sv-001",
-    username: "B21DCCN001",
-    password: "123456",
-    name: "Nguyễn Văn An",
-    role: "student",
-    studentId: "B21DCCN001",
-    email: "anb21dccn001@ptit.edu.vn",
-  },
-  {
-    id: "sv-002",
-    username: "B21DCCN002",
-    password: "123456",
-    name: "Trần Thị Bình",
-    role: "student",
-    studentId: "B21DCCN002",
-    email: "binhb21dccn002@ptit.edu.vn",
-  },
-  {
-    id: "sv-003",
-    username: "B22DCCN123",
-    password: "123456",
-    name: "Lê Hoàng Cường",
-    role: "student",
-    studentId: "B22DCCN123",
-    email: "cuongb22dccn123@ptit.edu.vn",
-  },
-];
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+async function apiLogin(username, password) {
+  const response = await fetch(API_BASE_URL + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username, password }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Đăng nhập thất bại');
+  }
+
+  return data;
+}
+
+async function apiGetMe(token) {
+  const response = await fetch(API_BASE_URL + '/auth/me', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token,
+    },
+    credentials: 'include',
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Không thể xác thực');
+  }
+
+  return data;
+}
+
+async function apiLogout(token) {
+  try {
+    await fetch(API_BASE_URL + '/auth/logout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+      },
+      credentials: 'include',
+    });
+  } catch {
+    // Bỏ qua lỗi logout
+  }
+}
+
+async function apiRefreshToken(refreshToken) {
+  const response = await fetch(API_BASE_URL + '/auth/refresh-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Refresh token thất bại');
+  }
+
+  return data;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+
   const router = useRouter();
 
+  // Khởi tạo: kiểm tra session đã lưu
   useEffect(() => {
-    // Check for saved session
-    const savedUser = localStorage.getItem("ptit_user");
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch {
-        localStorage.removeItem("ptit_user");
+    const initAuth = async () => {
+      if (typeof window === 'undefined') {
+        setIsLoading(false);
+        return;
       }
-    }
-    setIsLoading(false);
+
+      const token = localStorage.getItem('ptit_token');
+
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Khôi phục từ cache trước để UX nhanh hơn
+      const savedUser = localStorage.getItem('ptit_user');
+
+      if (savedUser) {
+        try {
+          setUser(JSON.parse(savedUser));
+        } catch {
+          localStorage.removeItem('ptit_user');
+        }
+      }
+
+      // Xác thực token với server
+      try {
+        const response = await apiGetMe(token);
+
+        if (response.success && response.data) {
+          const userData = buildUserData(response.data);
+
+          setUser(userData);
+
+          localStorage.setItem(
+            'ptit_user',
+            JSON.stringify(userData)
+          );
+        }
+      } catch (error) {
+        // Token hết hạn, thử refresh
+        const refreshToken = localStorage.getItem(
+          'ptit_refresh_token'
+        );
+
+        if (refreshToken) {
+          try {
+            const refreshResponse =
+              await apiRefreshToken(refreshToken);
+
+            if (
+              refreshResponse.data &&
+              refreshResponse.data.token
+            ) {
+              localStorage.setItem(
+                'ptit_token',
+                refreshResponse.data.token
+              );
+
+              if (refreshResponse.data.refreshToken) {
+                localStorage.setItem(
+                  'ptit_refresh_token',
+                  refreshResponse.data.refreshToken
+                );
+              }
+
+              // Thử getMe lại với token mới
+              const retryResponse = await apiGetMe(
+                refreshResponse.data.token
+              );
+
+              if (
+                retryResponse.success &&
+                retryResponse.data
+              ) {
+                const userData = buildUserData(
+                  retryResponse.data
+                );
+
+                setUser(userData);
+
+                localStorage.setItem(
+                  'ptit_user',
+                  JSON.stringify(userData)
+                );
+              }
+            }
+          } catch {
+            // Refresh thất bại, xóa tất cả
+            clearStorage();
+            setUser(null);
+          }
+        } else {
+          clearStorage();
+          setUser(null);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
   }, []);
 
-  const login = async (username, password) => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 800));
+  const login = useCallback(async (username, password) => {
+    try {
+      const response = await apiLogin(username, password);
 
-    const foundUser = MOCK_USERS.find(
-      (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password
-    );
+      if (response.success && response.data) {
+        const {
+          user: userData,
+          token,
+          refreshToken,
+        } = response.data;
 
-    if (foundUser) {
-      const userData = {
-        id: foundUser.id,
-        name: foundUser.name,
-        role: foundUser.role,
-        studentId: foundUser.studentId,
-        email: foundUser.email,
-      };
-      setUser(userData);
-      localStorage.setItem("ptit_user", JSON.stringify(userData));
-      
-      // Redirect based on role
-      if (foundUser.role === "admin") {
-        router.push("/admin");
-      } else {
-        router.push("/student");
+        // Lưu tokens
+        if (token) {
+          localStorage.setItem('ptit_token', token);
+        }
+
+        if (refreshToken) {
+          localStorage.setItem(
+            'ptit_refresh_token',
+            refreshToken
+          );
+        }
+
+        const userInfo = buildUserData(userData);
+
+        setUser(userInfo);
+
+        localStorage.setItem(
+          'ptit_user',
+          JSON.stringify(userInfo)
+        );
+
+        // Redirect theo role
+        if (userData.role === 'admin') {
+          router.push('/admin');
+        } else {
+          router.push('/student');
+        }
+
+        return {
+          success: true,
+          message: 'Đăng nhập thành công!',
+        };
       }
-      
-      return { success: true, message: "Đăng nhập thành công!" };
+
+      return {
+        success: false,
+        message:
+          response.message || 'Đăng nhập thất bại',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.message ||
+          'Tên đăng nhập hoặc mật khẩu không đúng!',
+      };
     }
+  }, [router]);
 
-    return { success: false, message: "Tên đăng nhập hoặc mật khẩu không đúng!" };
-  };
+  const logout = useCallback(async () => {
+    const token = localStorage.getItem('ptit_token');
 
-  const logout = () => {
+    await apiLogout(token);
+
+    clearStorage();
+
     setUser(null);
-    localStorage.removeItem("ptit_user");
-    router.push("/");
+
+    router.push('/');
+  }, [router]);
+
+  const updateUser = useCallback((newData) => {
+    setUser(function (prev) {
+      const updated = Object.assign({}, prev, newData);
+
+      localStorage.setItem(
+        'ptit_user',
+        JSON.stringify(updated)
+      );
+
+      return updated;
+    });
+  }, []);
+
+  const value = {
+    user,
+    isLoading,
+    login,
+    logout,
+    updateUser,
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 }
 
+// Helper: build user object từ API response
+function buildUserData(userData) {
+  return {
+    id: userData.id,
+    username: userData.username,
+    name: userData.name || userData.username,
+    role: userData.role,
+    studentId: userData.student
+      ? userData.student.student_code
+      : null,
+    email: userData.student
+      ? userData.student.email
+      : userData.username + '@ptit.edu.vn',
+    student: userData.student || null,
+  };
+}
+
+// Helper: xóa storage
+function clearStorage() {
+  if (typeof window === 'undefined') return;
+
+  localStorage.removeItem('ptit_token');
+  localStorage.removeItem('ptit_refresh_token');
+  localStorage.removeItem('ptit_user');
+}
+
 export function useAuth() {
   const context = useContext(AuthContext);
+
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error(
+      "useAuth must be used within an AuthProvider"
+    );
   }
+
   return context;
 }
+

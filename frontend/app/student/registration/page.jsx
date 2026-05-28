@@ -1,154 +1,291 @@
+
 "use client"
 
 import { useState } from "react"
 import { Header } from "@/components/dashboard/header"
+import { useApi, useMutation } from "@/hooks/use-api"
+import { registrationService } from "@/lib/services/studentService"
 import {
-  BookOpen,
-  Search,
-  Filter,
-  Plus,
-  Trash2,
-  Clock,
-  Users,
-  CheckCircle,
-  AlertCircle,
-  Info
+  BookOpen, Search, Filter, Plus,
+  Trash2, Clock, Users, CheckCircle,
+  AlertCircle, Info
 } from "lucide-react"
 
-const availableCourses = [
-  { id: "IT4062", name: "Phát triển ứng dụng Web", credits: 3, group: "01", teacher: "TS. Nguyễn Văn Hùng", schedule: "Thứ 2, 7:00-9:30", room: "A2-301", slots: 45, registered: 38, status: "available" },
-  { id: "IT4063", name: "Phát triển ứng dụng Di động", credits: 3, group: "01", teacher: "ThS. Trần Văn Nam", schedule: "Thứ 3, 9:45-12:15", room: "A3-402", slots: 40, registered: 40, status: "full" },
-  { id: "IT4064", name: "Trí tuệ nhân tạo", credits: 3, group: "02", teacher: "PGS.TS. Lê Hoàng Nam", schedule: "Thứ 4, 13:30-16:00", room: "A1-201", slots: 50, registered: 42, status: "available" },
-  { id: "IT4065", name: "Học máy", credits: 3, group: "01", teacher: "TS. Phạm Thị Hà", schedule: "Thứ 5, 7:00-9:30", room: "A2-302", slots: 45, registered: 30, status: "available" },
-  { id: "IT4066", name: "An toàn và bảo mật thông tin", credits: 3, group: "01", teacher: "TS. Nguyễn Minh Đức", schedule: "Thứ 6, 9:45-12:15", room: "A1-301", slots: 50, registered: 45, status: "available" },
-  { id: "IT4067", name: "Điện toán đám mây", credits: 3, group: "01", teacher: "ThS. Vũ Văn Tùng", schedule: "Thứ 2, 13:30-16:00", room: "A3-201", slots: 40, registered: 35, status: "available" },
-]
-
-const registeredCourses = [
-  { id: "IT4062", name: "Phát triển ứng dụng Web", credits: 3, group: "01", teacher: "TS. Nguyễn Văn Hùng", schedule: "Thứ 2, 7:00-9:30", room: "A2-301" },
-  { id: "IT4064", name: "Trí tuệ nhân tạo", credits: 3, group: "02", teacher: "PGS.TS. Lê Hoàng Nam", schedule: "Thứ 4, 13:30-16:00", room: "A1-201" },
-  { id: "IT4065", name: "Học máy", credits: 3, group: "01", teacher: "TS. Phạm Thị Hà", schedule: "Thứ 5, 7:00-9:30", room: "A2-302" },
-]
-
 export default function RegistrationPage() {
+  const [searchInput, setSearchInput] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
-  const [registered, setRegistered] = useState(registeredCourses)
-  
-  const totalCredits = registered.reduce((sum, course) => sum + course.credits, 0)
-  const maxCredits = 24
-  const minCredits = 14
+  const [successMsg, setSuccessMsg] = useState("")
+  const [errorMsg, setErrorMsg] = useState("")
 
-  const filteredCourses = availableCourses.filter(course => 
-    course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    course.id.toLowerCase().includes(searchTerm.toLowerCase())
+  const { data: regInfo, loading: infoLoading } = useApi(
+    registrationService.getInfo,
+    [],
+    { defaultData: {} }
   )
 
-  const isRegistered = (courseId) => registered.some(c => c.id === courseId)
+  const { data: availableData, loading: availLoading, refetch: refetchAvail } = useApi(
+    function () {
+      return registrationService.getAvailable(
+        searchTerm ? { search: searchTerm } : {}
+      )
+    },
+    [searchTerm],
+    { defaultData: [] }
+  )
 
-  const handleRegister = (course) => {
-    if (!isRegistered(course.id) && course.status !== "full") {
-      setRegistered([...registered, course])
+  const {
+    data: registeredData,
+    loading: regLoading,
+    refetch: refetchReg,
+  } = useApi(
+    registrationService.getRegistered,
+    [],
+    { defaultData: { courses: [], summary: {} } }
+  )
+
+  const { mutate: registerCourse, loading: registering } = useMutation(
+    registrationService.register,
+    {
+      onSuccess: function () {
+        setSuccessMsg("Đăng ký môn học thành công")
+        refetchReg()
+        refetchAvail()
+        setTimeout(function () { setSuccessMsg("") }, 3000)
+      },
+      onError: function (err) {
+        setErrorMsg(err.message || "Lỗi khi đăng ký")
+        setTimeout(function () { setErrorMsg("") }, 4000)
+      },
     }
+  )
+
+  const { mutate: cancelCourse, loading: canceling } = useMutation(
+    registrationService.cancel,
+    {
+      onSuccess: function () {
+        setSuccessMsg("Hủy đăng ký thành công")
+        refetchReg()
+        refetchAvail()
+        setTimeout(function () { setSuccessMsg("") }, 3000)
+      },
+      onError: function (err) {
+        setErrorMsg(err.message || "Lỗi khi hủy đăng ký")
+        setTimeout(function () { setErrorMsg("") }, 4000)
+      },
+    }
+  )
+
+  const { mutate: confirmReg, loading: confirming } = useMutation(
+    registrationService.confirm,
+    {
+      onSuccess: function () {
+        setSuccessMsg("Xác nhận đăng ký thành công!")
+        refetchReg()
+        setTimeout(function () { setSuccessMsg("") }, 3000)
+      },
+      onError: function (err) {
+        setErrorMsg(err.message || "Lỗi khi xác nhận")
+        setTimeout(function () { setErrorMsg("") }, 4000)
+      },
+    }
+  )
+
+  function handleSearch(e) {
+    e.preventDefault()
+    setSearchTerm(searchInput)
   }
 
-  const handleRemove = (courseId) => {
-    setRegistered(registered.filter(c => c.id !== courseId))
+  var availList = Array.isArray(availableData) ? availableData : []
+  var regCourses = registeredData && Array.isArray(registeredData.courses)
+    ? registeredData.courses
+    : []
+  var summary = registeredData && registeredData.summary
+    ? registeredData.summary
+    : {}
+
+  var totalCredits = summary.totalCredits || 0
+  var maxCredits = (regInfo && regInfo.maxCredits) || 24
+  var minCredits = (regInfo && regInfo.minCredits) || 14
+  var isOpen = regInfo && regInfo.isOpen
+
+  function isRegistered(courseId) {
+    return regCourses.some(function (c) { return c.course_id === courseId })
+  }
+
+  function getRegisteredCourseId(courseId) {
+    var found = regCourses.find(function (c) { return c.course_id === courseId })
+    return found ? found.course_id : null
   }
 
   return (
     <div className="dashboard-content">
       <Header title="Đăng ký môn học" />
-      
+
       <div className="dashboard-body">
-        {/* Registration Info */}
-        <div className="registration-info-banner">
-          <div className="registration-info-content">
-            <div className="registration-info-icon">
-              <Info />
+        {successMsg && (
+          <div style={{
+            padding: "0.75rem 1rem", background: "#dcfce7",
+            border: "1px solid #16a34a", borderRadius: "0.5rem",
+            color: "#166534", fontSize: "0.875rem",
+          }}>
+            {successMsg}
+          </div>
+        )}
+        {errorMsg && (
+          <div style={{
+            padding: "0.75rem 1rem", background: "#fee2e2",
+            border: "1px solid #dc2626", borderRadius: "0.5rem",
+            color: "#991b1b", fontSize: "0.875rem",
+          }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Registration Info Banner */}
+        {infoLoading ? (
+          <div style={{ padding: "1rem", color: "var(--muted-foreground)" }}>
+            Đang tải thông tin đăng ký...
+          </div>
+        ) : (
+          <div className="registration-info-banner">
+            <div className="registration-info-content">
+              <div className="registration-info-icon">
+                <Info />
+              </div>
+              <div className="registration-info-text">
+                {isOpen ? (
+                  <>
+                    <h3>
+                      Đang mở đăng ký:{" "}
+                      {regInfo.semester && regInfo.semester.name}
+                    </h3>
+                    <p>
+                      Thời hạn:{" "}
+                      {regInfo.registrationEnd
+                        ? new Date(regInfo.registrationEnd).toLocaleDateString("vi-VN")
+                        : "—"}
+                      . Tối thiểu {minCredits} TC, tối đa {maxCredits} TC.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3>Chưa có đợt đăng ký</h3>
+                    <p>
+                      {regInfo.message || "Hiện không có đợt đăng ký môn học nào đang mở."}
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="registration-info-text">
-              <h3>Thời gian đăng ký: 15/01/2025 - 20/01/2025</h3>
-              <p>Học kỳ 2 năm học 2024-2025. Sinh viên cần đăng ký tối thiểu {minCredits} tín chỉ và tối đa {maxCredits} tín chỉ.</p>
+            <div className="registration-credits-info">
+              <div className="credits-counter">
+                <span className="credits-number">{totalCredits}</span>
+                <span className="credits-max">/{maxCredits}</span>
+              </div>
+              <span className="credits-label">Tín chỉ đăng ký</span>
             </div>
           </div>
-          <div className="registration-credits-info">
-            <div className="credits-counter">
-              <span className="credits-number">{totalCredits}</span>
-              <span className="credits-max">/{maxCredits}</span>
-            </div>
-            <span className="credits-label">Tín chỉ đăng ký</span>
-          </div>
-        </div>
+        )}
 
         <div className="registration-grid">
           {/* Available Courses */}
           <div className="card">
             <div className="card-header">
               <h2 className="card-title">
-                <BookOpen />
-                Danh sách môn học mở
+                <BookOpen /> Danh sách môn học mở
               </h2>
             </div>
             <div className="card-content">
-              {/* Search */}
-              <div className="search-filter-bar">
+              <form onSubmit={handleSearch} className="search-filter-bar">
                 <div className="search-box">
                   <Search className="search-icon" />
                   <input
                     type="text"
                     placeholder="Tìm kiếm môn học..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={searchInput}
+                    onChange={function (e) { setSearchInput(e.target.value) }}
                     className="search-input"
                   />
                 </div>
-                <button className="btn btn-outline btn-sm">
-                  <Filter /> Bộ lọc
+                <button type="submit" className="btn btn-outline btn-sm">
+                  Tìm
                 </button>
-              </div>
+              </form>
 
-              {/* Course List */}
-              <div className="course-list">
-                {filteredCourses.map((course) => (
-                  <div key={`${course.id}-${course.group}`} className={`course-item ${course.status === "full" ? "disabled" : ""}`}>
-                    <div className="course-main">
-                      <div className="course-header">
-                        <span className="course-code">{course.id}</span>
-                        <span className={`badge ${course.status === "full" ? "badge-danger" : "badge-success"}`}>
-                          {course.status === "full" ? "Đã đầy" : "Còn chỗ"}
-                        </span>
+              {availLoading ? (
+                <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+                  Đang tải...
+                </div>
+              ) : availList.length === 0 ? (
+                <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+                  Không có môn học nào
+                </div>
+              ) : (
+                <div className="course-list">
+                  {availList.map(function (course) {
+                    var isFull = course.current_students >= course.max_students
+                    var alreadyReg = isRegistered(course.id)
+                    var slots = course.max_students - course.current_students
+
+                    return (
+                      <div
+                        key={course.id}
+                        className={"course-item " + (isFull && !alreadyReg ? "disabled" : "")}
+                      >
+                        <div className="course-main">
+                          <div className="course-header">
+                            <span className="course-code">{course.course_code}</span>
+                            <span className={"badge " + (isFull ? "badge-danger" : "badge-success")}>
+                              {isFull ? "Đã đầy" : slots + " chỗ còn"}
+                            </span>
+                          </div>
+                          <h4 className="course-name">{course.name}</h4>
+                          <div className="course-details">
+                            {course.day_of_week && (
+                              <span className="course-detail">
+                                <Clock size={12} />
+                                {course.day_of_week}{" "}
+                                {course.start_time ? course.start_time.slice(0, 5) : ""}-
+                                {course.end_time ? course.end_time.slice(0, 5) : ""}
+                              </span>
+                            )}
+                            <span className="course-detail">
+                              <Users size={12} />
+                              {course.current_students}/{course.max_students}
+                            </span>
+                            <span className="course-detail">
+                              {course.credits} TC
+                            </span>
+                            {course.type && (
+                              <span className="course-detail">{course.type}</span>
+                            )}
+                          </div>
+                          <p className="course-teacher">
+                            {course.instructor_name || "Chưa phân công"}
+                            {course.room ? " - " + course.room : ""}
+                          </p>
+                        </div>
+                        <div className="course-action">
+                          {alreadyReg ? (
+                            <button className="btn btn-outline btn-sm" disabled>
+                              <CheckCircle size={14} /> Đã đăng ký
+                            </button>
+                          ) : (
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={function () { registerCourse(course.id) }}
+                              disabled={isFull || registering || !isOpen}
+                            >
+                              <Plus size={14} />
+                              {registering ? "..." : "Đăng ký"}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <h4 className="course-name">{course.name}</h4>
-                      <div className="course-details">
-                        <span className="course-detail">
-                          <Clock /> {course.schedule}
-                        </span>
-                        <span className="course-detail">
-                          <Users /> {course.registered}/{course.slots}
-                        </span>
-                        <span className="course-detail">Nhóm {course.group}</span>
-                        <span className="course-detail">{course.credits} TC</span>
-                      </div>
-                      <p className="course-teacher">{course.teacher} - {course.room}</p>
-                    </div>
-                    <div className="course-action">
-                      {isRegistered(course.id) ? (
-                        <button className="btn btn-outline btn-sm" disabled>
-                          <CheckCircle /> Đã đăng ký
-                        </button>
-                      ) : (
-                        <button 
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleRegister(course)}
-                          disabled={course.status === "full"}
-                        >
-                          <Plus /> Đăng ký
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -156,36 +293,50 @@ export default function RegistrationPage() {
           <div className="card">
             <div className="card-header">
               <h2 className="card-title">
-                <CheckCircle />
-                Môn học đã đăng ký ({registered.length})
+                <CheckCircle /> Môn học đã đăng ký ({regCourses.length})
               </h2>
             </div>
             <div className="card-content">
-              {registered.length === 0 ? (
+              {regLoading ? (
+                <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+                  Đang tải...
+                </div>
+              ) : regCourses.length === 0 ? (
                 <div className="empty-state">
                   <AlertCircle />
                   <p>Chưa có môn học nào được đăng ký</p>
                 </div>
               ) : (
                 <div className="registered-list">
-                  {registered.map((course) => (
-                    <div key={course.id} className="registered-item">
-                      <div className="registered-info">
-                        <div className="registered-header">
-                          <span className="course-code">{course.id}</span>
-                          <span className="course-credits">{course.credits} TC</span>
+                  {regCourses.map(function (course) {
+                    return (
+                      <div key={course.registration_id || course.course_id} className="registered-item">
+                        <div className="registered-info">
+                          <div className="registered-header">
+                            <span className="course-code">{course.course_code}</span>
+                            <span className="course-credits">{course.credits} TC</span>
+                          </div>
+                          <h4 className="course-name">{course.course_name}</h4>
+                          <p className="course-schedule">
+                            {course.day_of_week}{" "}
+                            {course.start_time ? course.start_time.slice(0, 5) : ""}-
+                            {course.end_time ? course.end_time.slice(0, 5) : ""}
+                            {course.room ? " - " + course.room : ""}
+                          </p>
                         </div>
-                        <h4 className="course-name">{course.name}</h4>
-                        <p className="course-schedule">{course.schedule} - {course.room}</p>
+                        {isOpen && (
+                          <button
+                            className="btn btn-ghost btn-icon btn-sm"
+                            onClick={function () { cancelCourse(course.course_id) }}
+                            disabled={canceling}
+                            title="Hủy đăng ký"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
-                      <button 
-                        className="btn btn-ghost btn-icon btn-sm"
-                        onClick={() => handleRemove(course.id)}
-                      >
-                        <Trash2 />
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -193,7 +344,7 @@ export default function RegistrationPage() {
               <div className="registration-summary">
                 <div className="summary-row">
                   <span>Tổng số môn:</span>
-                  <span className="font-semibold">{registered.length} môn</span>
+                  <span className="font-semibold">{regCourses.length} môn</span>
                 </div>
                 <div className="summary-row">
                   <span>Tổng tín chỉ:</span>
@@ -201,13 +352,28 @@ export default function RegistrationPage() {
                 </div>
                 <div className="summary-row">
                   <span>Học phí dự kiến:</span>
-                  <span className="font-semibold text-primary">{(totalCredits * 450000).toLocaleString()}đ</span>
+                  <span className="font-semibold text-primary">
+                    {(totalCredits * 450000).toLocaleString("vi-VN")}đ
+                  </span>
                 </div>
               </div>
 
-              <button className="btn btn-primary" style={{ width: "100%", marginTop: "1rem" }}>
-                Xác nhận đăng ký
-              </button>
+              {isOpen && regCourses.length > 0 && (
+                <button
+                  className="btn btn-primary"
+                  style={{ width: "100%", marginTop: "1rem" }}
+                  onClick={function () { confirmReg() }}
+                  disabled={confirming || totalCredits < minCredits}
+                >
+                  {confirming ? "Đang xác nhận..." : "Xác nhận đăng ký"}
+                </button>
+              )}
+
+              {totalCredits > 0 && totalCredits < minCredits && (
+                <p style={{ fontSize: "12px", color: "#dc2626", marginTop: "0.5rem", textAlign: "center" }}>
+                  Cần ít nhất {minCredits} tín chỉ để xác nhận
+                </p>
+              )}
             </div>
           </div>
         </div>

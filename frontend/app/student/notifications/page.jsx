@@ -1,265 +1,225 @@
+
 "use client"
 
 import { useState } from "react"
 import { Header } from "@/components/dashboard/header"
+import { useApi, useMutation } from "@/hooks/use-api"
+import { notificationService } from "@/lib/services/studentService"
 import {
-  Bell,
-  Calendar,
-  FileText,
-  AlertCircle,
-  CheckCircle,
-  Info,
-  Megaphone,
-  GraduationCap,
-  CreditCard,
-  Filter,
-  Search,
-  MoreVertical,
-  Trash2,
-  Eye,
-  Check
+  Bell, BookOpen, CreditCard, Award,
+  Calendar, Info, CheckCircle, Trash2,
+  Clock
 } from "lucide-react"
 
-const notifications = [
-  {
-    id: 1,
-    type: "announcement",
-    title: "Thông báo lịch thi học kỳ 2 năm học 2024-2025",
-    content: "Phòng Đào tạo thông báo lịch thi kết thúc học phần học kỳ 2 năm học 2024-2025. Sinh viên xem chi tiết lịch thi trên hệ thống và chuẩn bị đầy đủ thẻ sinh viên khi đến phòng thi.",
-    date: "20/01/2025",
-    time: "09:30",
-    unread: true,
-    priority: "high"
-  },
-  {
-    id: 2,
-    type: "registration",
-    title: "Nhắc nhở đăng ký môn học",
-    content: "Thời gian đăng ký môn học học kỳ 2 sẽ kết thúc vào ngày 20/01/2025. Sinh viên chưa đăng ký vui lòng hoàn thành trước thời hạn.",
-    date: "18/01/2025",
-    time: "14:00",
-    unread: true,
-    priority: "high"
-  },
-  {
-    id: 3,
-    type: "tuition",
-    title: "Thông báo nộp học phí",
-    content: "Học phí học kỳ 2 năm học 2024-2025 đã được cập nhật. Hạn nộp học phí: 31/01/2025. Sinh viên vui lòng thanh toán đúng hạn để tránh bị khóa tài khoản.",
-    date: "15/01/2025",
-    time: "08:00",
-    unread: false,
-    priority: "medium"
-  },
-  {
-    id: 4,
-    type: "grade",
-    title: "Điểm môn Lập trình Java đã được công bố",
-    content: "Điểm thi kết thúc học phần môn Lập trình Java (IT4060) đã được cập nhật trên hệ thống. Sinh viên kiểm tra và phản hồi trong vòng 7 ngày nếu có thắc mắc.",
-    date: "12/01/2025",
-    time: "16:45",
-    unread: false,
-    priority: "normal"
-  },
-  {
-    id: 5,
-    type: "announcement",
-    title: "Lịch nghỉ Tết Nguyên đán 2025",
-    content: "Học viện thông báo lịch nghỉ Tết Nguyên đán Ất Tỵ 2025 từ ngày 25/01/2025 đến hết ngày 02/02/2025. Sinh viên quay lại học tập từ ngày 03/02/2025.",
-    date: "10/01/2025",
-    time: "10:00",
-    unread: false,
-    priority: "normal"
-  },
-  {
-    id: 6,
-    type: "event",
-    title: "Hội thảo: Cơ hội nghề nghiệp trong ngành CNTT",
-    content: "Phòng Công tác sinh viên phối hợp với các doanh nghiệp tổ chức Hội thảo Cơ hội nghề nghiệp. Thời gian: 14:00 ngày 08/01/2025. Địa điểm: Hội trường A1.",
-    date: "05/01/2025",
-    time: "11:30",
-    unread: false,
-    priority: "normal"
-  },
-]
+var TYPE_ICONS = {
+  "Thông báo chung": Info,
+  "Đăng ký học": BookOpen,
+  "Học phí": CreditCard,
+  "Điểm số": Award,
+  "Sự kiện": Calendar,
+}
 
-const filterTypes = [
-  { id: "all", label: "Tất cả", icon: Bell },
-  { id: "announcement", label: "Thông báo chung", icon: Megaphone },
-  { id: "registration", label: "Đăng ký học", icon: FileText },
-  { id: "tuition", label: "Học phí", icon: CreditCard },
-  { id: "grade", label: "Điểm số", icon: GraduationCap },
-  { id: "event", label: "Sự kiện", icon: Calendar },
+var TYPE_COLORS = {
+  "Thông báo chung": "blue",
+  "Đăng ký học": "purple",
+  "Học phí": "orange",
+  "Điểm số": "green",
+  "Sự kiện": "teal",
+}
+
+var FILTERS = [
+  { label: "Tất cả", value: "all" },
+  { label: "Thông báo chung", value: "Thông báo chung" },
+  { label: "Đăng ký học", value: "Đăng ký học" },
+  { label: "Học phí", value: "Học phí" },
+  { label: "Điểm số", value: "Điểm số" },
+  { label: "Sự kiện", value: "Sự kiện" },
 ]
 
 export default function NotificationsPage() {
-  const [filter, setFilter] = useState("all")
-  const [searchTerm, setSearchTerm] = useState("")
-  const [notificationList, setNotificationList] = useState(notifications)
+  const [activeFilter, setActiveFilter] = useState("all")
 
-  const filteredNotifications = notificationList.filter(n => {
-    const matchesFilter = filter === "all" || n.type === filter
-    const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          n.content.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesFilter && matchesSearch
+  var queryParams = activeFilter !== "all" ? { type: activeFilter } : {}
+
+  const {
+    data: notifData,
+    loading,
+    error,
+    refetch,
+  } = useApi(
+    function () { return notificationService.getAll(queryParams) },
+    [activeFilter],
+    { defaultData: { notifications: [], total: 0, unread: 0 } }
+  )
+
+  const { mutate: markRead } = useMutation(notificationService.markAsRead, {
+    onSuccess: function () { refetch() },
   })
 
-  const unreadCount = notificationList.filter(n => n.unread).length
+  const { mutate: markAllRead, loading: markingAll } = useMutation(
+    notificationService.markAllAsRead,
+    { onSuccess: function () { refetch() } }
+  )
 
-  const markAsRead = (id) => {
-    setNotificationList(prev => 
-      prev.map(n => n.id === id ? { ...n, unread: false } : n)
-    )
-  }
+  const { mutate: deleteNotif } = useMutation(notificationService.delete, {
+    onSuccess: function () { refetch() },
+  })
 
-  const markAllAsRead = () => {
-    setNotificationList(prev => prev.map(n => ({ ...n, unread: false })))
-  }
+  var notifications = notifData && Array.isArray(notifData.notifications)
+    ? notifData.notifications
+    : Array.isArray(notifData)
+    ? notifData
+    : []
 
-  const deleteNotification = (id) => {
-    setNotificationList(prev => prev.filter(n => n.id !== id))
-  }
-
-  const getTypeIcon = (type) => {
-    switch (type) {
-      case "announcement": return <Megaphone />
-      case "registration": return <FileText />
-      case "tuition": return <CreditCard />
-      case "grade": return <GraduationCap />
-      case "event": return <Calendar />
-      default: return <Bell />
-    }
-  }
-
-  const getTypeColor = (type) => {
-    switch (type) {
-      case "announcement": return "blue"
-      case "registration": return "purple"
-      case "tuition": return "green"
-      case "grade": return "orange"
-      case "event": return "teal"
-      default: return "gray"
-    }
-  }
-
-  const getPriorityBadge = (priority) => {
-    switch (priority) {
-      case "high": return <span className="badge badge-danger">Quan trọng</span>
-      case "medium": return <span className="badge badge-warning">Lưu ý</span>
-      default: return null
-    }
-  }
+  var unreadCount = (notifData && notifData.unread) || 0
+  var totalCount = (notifData && notifData.total) || notifications.length
 
   return (
     <div className="dashboard-content">
       <Header title="Thông báo" />
-      
+
       <div className="dashboard-body">
         {/* Header Stats */}
-        <div className="notification-header-stats">
+        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+          <div className="notification-stat-card highlight">
+            <div className="notification-stat-icon unread">
+              <Bell />
+            </div>
+            <div>
+              <p className="notification-stat-value">{unreadCount}</p>
+              <p className="notification-stat-label">Chưa đọc</p>
+            </div>
+          </div>
+          <div className="notification-stat-card">
+            <div className="notification-stat-icon">
+              <CheckCircle />
+            </div>
+            <div>
+              <p className="notification-stat-value">{totalCount - unreadCount}</p>
+              <p className="notification-stat-label">Đã đọc</p>
+            </div>
+          </div>
           <div className="notification-stat-card">
             <div className="notification-stat-icon">
               <Bell />
             </div>
             <div>
-              <span className="notification-stat-value">{notificationList.length}</span>
-              <span className="notification-stat-label">Tổng thông báo</span>
-            </div>
-          </div>
-          <div className="notification-stat-card highlight">
-            <div className="notification-stat-icon unread">
-              <AlertCircle />
-            </div>
-            <div>
-              <span className="notification-stat-value">{unreadCount}</span>
-              <span className="notification-stat-label">Chưa đọc</span>
+              <p className="notification-stat-value">{totalCount}</p>
+              <p className="notification-stat-label">Tổng cộng</p>
             </div>
           </div>
         </div>
 
-        {/* Filters and Search */}
-        <div className="notification-controls">
+        {/* Controls */}
+        <div className="notification-controls" style={{ marginTop: "16px" }}>
           <div className="notification-filters">
-            {filterTypes.map((type) => {
-              const Icon = type.icon
+            {FILTERS.map(function (f) {
               return (
                 <button
-                  key={type.id}
-                  className={`notification-filter-btn ${filter === type.id ? "active" : ""}`}
-                  onClick={() => setFilter(type.id)}
+                  key={f.value}
+                  className={"notification-filter-btn " + (activeFilter === f.value ? "active" : "")}
+                  onClick={function () { setActiveFilter(f.value) }}
                 >
-                  <Icon />
-                  {type.label}
+                  {f.label}
                 </button>
               )
             })}
           </div>
           <div className="notification-actions">
-            <div className="search-box">
-              <Search className="search-icon" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm thông báo..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-input"
-              />
-            </div>
-            <button className="btn btn-outline btn-sm" onClick={markAllAsRead}>
-              <Check /> Đánh dấu đã đọc tất cả
-            </button>
+            {unreadCount > 0 && (
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={function () { markAllRead() }}
+                disabled={markingAll}
+              >
+                <CheckCircle size={16} />
+                {markingAll ? "Đang xử lý..." : "Đánh dấu tất cả đã đọc"}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Notifications List */}
-        <div className="card">
-          <div className="card-content" style={{ padding: 0 }}>
-            {filteredNotifications.length === 0 ? (
-              <div className="empty-state" style={{ padding: "3rem" }}>
-                <Bell />
-                <p>Không có thông báo nào</p>
-              </div>
-            ) : (
-              <div className="notification-list">
-                {filteredNotifications.map((notification) => (
-                  <div 
-                    key={notification.id} 
-                    className={`notification-list-item ${notification.unread ? "unread" : ""}`}
-                    onClick={() => markAsRead(notification.id)}
+        <div className="card" style={{ marginTop: "16px" }}>
+          {error && (
+            <div style={{ padding: "1rem", color: "#dc2626" }}>
+              Lỗi: {error}
+            </div>
+          )}
+          {loading ? (
+            <div style={{ padding: "3rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+              Đang tải...
+            </div>
+          ) : notifications.length === 0 ? (
+            <div style={{ padding: "3rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+              <Bell size={40} style={{ marginBottom: "12px", opacity: 0.4 }} />
+              <p>Không có thông báo nào</p>
+            </div>
+          ) : (
+            <div className="notification-list">
+              {notifications.map(function (notif) {
+                var IconComp = TYPE_ICONS[notif.type] || Bell
+                var colorClass = "notification-type-icon " + (TYPE_COLORS[notif.type] || "gray")
+                var isUnread = !notif.is_read
+                var dateStr = notif.created_at
+                  ? new Date(notif.created_at).toLocaleDateString("vi-VN", {
+                      day: "2-digit", month: "2-digit", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })
+                  : ""
+                var priorityBadge = notif.priority === "Quan trọng"
+                  ? "badge-danger"
+                  : notif.priority === "Lưu ý"
+                  ? "badge-warning"
+                  : "badge-outline"
+
+                return (
+                  <div
+                    key={notif.id}
+                    className={"notification-list-item " + (isUnread ? "unread" : "")}
+                    onClick={function () {
+                      if (isUnread) markRead(notif.id)
+                    }}
                   >
-                    <div className={`notification-type-icon ${getTypeColor(notification.type)}`}>
-                      {getTypeIcon(notification.type)}
+                    <div className={colorClass}>
+                      <IconComp />
                     </div>
                     <div className="notification-main">
                       <div className="notification-header">
-                        <h4 className="notification-title-text">{notification.title}</h4>
-                        {getPriorityBadge(notification.priority)}
-                        {notification.unread && <span className="unread-dot" />}
+                        <p className="notification-title-text">{notif.title}</p>
+                        {isUnread && <span className="unread-dot" />}
+                        <span className={"badge " + priorityBadge} style={{ marginLeft: "auto" }}>
+                          {notif.priority}
+                        </span>
                       </div>
-                      <p className="notification-content-text">{notification.content}</p>
+                      <p className="notification-content-text">{notif.content}</p>
                       <div className="notification-meta">
                         <span className="notification-date">
-                          <Calendar /> {notification.date}
+                          <Clock size={12} />
+                          {dateStr}
                         </span>
-                        <span className="notification-time">{notification.time}</span>
+                        <span className="badge badge-outline" style={{ fontSize: "10px" }}>
+                          {notif.type}
+                        </span>
                       </div>
                     </div>
                     <div className="notification-actions-menu">
-                      <button 
+                      <button
                         className="btn btn-ghost btn-icon btn-sm"
-                        onClick={(e) => {
+                        onClick={function (e) {
                           e.stopPropagation()
-                          deleteNotification(notification.id)
+                          deleteNotif(notif.id)
                         }}
+                        title="Xóa thông báo"
                       >
-                        <Trash2 />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

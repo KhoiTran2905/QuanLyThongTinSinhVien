@@ -1,7 +1,12 @@
+
 "use client"
 
 import { useAuth } from "@/contexts/auth-context"
 import { Header } from "@/components/dashboard/header"
+import { useApi } from "@/hooks/use-api"
+import {
+  studentDashboardService,
+} from "@/lib/services/studentService"
 import {
   BookOpen,
   Calendar,
@@ -11,86 +16,143 @@ import {
   Bell,
   FileText,
   ChevronRight,
-  MapPin
+  MapPin,
 } from "lucide-react"
-
-const studentInfo = {
-  name: "Nguyễn Văn An",
-  studentId: "B21DCCN001",
-  class: "D21CQCN01-B",
-  major: "Công nghệ thông tin",
-  faculty: "Công nghệ thông tin 1",
-  year: "Năm 3",
-  gpa: 3.45,
-  credits: 98,
-  totalCredits: 145
-}
-
-const todaySchedule = [
-  { time: "7:00 - 9:30", subject: "Lập trình Web", room: "A2-301", teacher: "TS. Nguyễn Văn Hùng", type: "Lý thuyết" },
-  { time: "9:45 - 12:15", subject: "Cơ sở dữ liệu", room: "A3-402", teacher: "ThS. Trần Thị Mai", type: "Thực hành" },
-  { time: "13:30 - 16:00", subject: "Trí tuệ nhân tạo", room: "A1-201", teacher: "PGS.TS. Lê Hoàng Nam", type: "Lý thuyết" },
-]
-
-const recentGrades = [
-  { subject: "Phát triển ứng dụng di động", credits: 3, midterm: 8.5, final: 8.0, gpa: 8.2 },
-  { subject: "Mạng máy tính", credits: 3, midterm: 7.5, final: 8.5, gpa: 8.1 },
-  { subject: "Kiến trúc máy tính", credits: 3, midterm: 9.0, final: 8.5, gpa: 8.7 },
-  { subject: "Xác suất thống kê", credits: 3, midterm: 7.0, final: 7.5, gpa: 7.3 },
-]
-
-const notifications = [
-  { title: "Lịch thi học kỳ 2", content: "Đã cập nhật lịch thi học kỳ 2 năm học 2024-2025", time: "2 giờ trước", unread: true },
-  { title: "Đăng ký môn học", content: "Thời gian đăng ký môn học từ 15/01 - 20/01", time: "1 ngày trước", unread: true },
-  { title: "Học phí học kỳ mới", content: "Hạn nộp học phí đến 31/01/2025", time: "2 ngày trước", unread: false },
-]
 
 export default function StudentDashboard() {
   const { user } = useAuth()
-  const progressPercent = (studentInfo.credits / studentInfo.totalCredits) * 100
-  
-  // Use logged in user name if available
-  const displayName = user?.name || studentInfo.name
-  const displayId = user?.studentId || studentInfo.studentId
+
+  const { data: dashboard, loading: dashLoading } = useApi(
+    studentDashboardService.getDashboard,
+    [],
+    { defaultData: {} }
+  )
+
+  const { data: todayData, loading: scheduleLoading } = useApi(
+    studentDashboardService.getTodaySchedule,
+    [],
+    { defaultData: { schedules: [] } }
+  )
+
+  const { data: notifData, loading: notifLoading } = useApi(
+    studentDashboardService.getNotifications,
+    [],
+    { defaultData: [] }
+  )
+
+  const { data: recentGrades, loading: gradesLoading } = useApi(
+    studentDashboardService.getRecentGrades,
+    [],
+    { defaultData: [] }
+  )
+
+  const { data: dashStats, loading: statsLoading } = useApi(
+    studentDashboardService.getStats,
+    [],
+    { defaultData: {} }
+  )
+
+  // Derived values
+  var displayName = dashboard && dashboard.full_name
+    ? dashboard.full_name
+    : user && user.name
+    ? user.name
+    : "..."
+
+  var avatarChar = displayName.split(" ").pop().charAt(0) || "N"
+
+  var studentCode = dashboard && dashboard.student_code
+    ? dashboard.student_code
+    : user && user.studentId
+    ? user.studentId
+    : ""
+
+  var classCode = (dashboard && dashboard.class_code) || ""
+  var majorName = (dashboard && dashboard.major_name) || ""
+  var gpa = dashboard && dashboard.gpa != null ? dashboard.gpa : null
+  var totalCredits = dashboard && dashboard.total_credits != null
+    ? dashboard.total_credits
+    : null
+  var requiredCredits = dashboard && dashboard.required_credits != null
+    ? dashboard.required_credits
+    : 145
+
+  var progressPercent = requiredCredits > 0 && totalCredits != null
+    ? Math.round((totalCredits / requiredCredits) * 100)
+    : 0
+
+  var todaySchedules = todayData && Array.isArray(todayData.schedules)
+    ? todayData.schedules
+    : []
+
+  var notifications = Array.isArray(notifData)
+    ? notifData
+    : notifData && Array.isArray(notifData.notifications)
+    ? notifData.notifications
+    : []
+
+  var gradesArray = Array.isArray(recentGrades) ? recentGrades : []
+
+  var tuitionStatus = dashStats && dashStats.tuitionStatus
+    ? dashStats.tuitionStatus
+    : null
+
+  // Today label
+  var dayNames = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"]
+  var todayObj = new Date()
+  var todayLabel = dayNames[todayObj.getDay()] + ", " + todayObj.toLocaleDateString("vi-VN")
 
   return (
     <div className="dashboard-content">
       <Header title="Tổng quan" />
-      
+
       <div className="dashboard-body">
         {/* Welcome Card */}
         <div className="welcome-card">
           <div className="welcome-content">
             <div className="welcome-top">
               <div className="welcome-user">
-                <div className="welcome-avatar">{displayName.split(" ").pop()?.charAt(0) || "N"}</div>
+                <div className="welcome-avatar">{avatarChar}</div>
                 <div>
-                  <h2 className="welcome-greeting">Xin chào, {displayName}!</h2>
+                  <h2 className="welcome-greeting">
+                    Xin chào, {displayName}!
+                  </h2>
                   <p className="welcome-info">
-                    {displayId} • {studentInfo.class} • {studentInfo.major}
+                    {studentCode}
+                    {classCode ? " • " + classCode : ""}
+                    {majorName ? " • " + majorName : ""}
                   </p>
                 </div>
               </div>
               <div className="welcome-stats">
                 <div className="welcome-stat">
-                  <p className="welcome-stat-value">{studentInfo.gpa}</p>
+                  <p className="welcome-stat-value">
+                    {dashLoading ? "..." : gpa != null ? gpa : "—"}
+                  </p>
                   <p className="welcome-stat-label">GPA tích lũy</p>
                 </div>
                 <div className="welcome-stat">
-                  <p className="welcome-stat-value">{studentInfo.credits}</p>
-                  <p className="welcome-stat-label">Tín chỉ đã hoàn thành</p>
+                  <p className="welcome-stat-value">
+                    {dashLoading ? "..." : totalCredits != null ? totalCredits : "—"}
+                  </p>
+                  <p className="welcome-stat-label">Tín chỉ hoàn thành</p>
                 </div>
               </div>
             </div>
-            
-            {/* Progress */}
+
+            {/* Progress Bar */}
             <div className="welcome-progress">
               <div className="welcome-progress-header">
                 <span>Tiến độ học tập</span>
-                <span>{studentInfo.credits}/{studentInfo.totalCredits} tín chỉ ({progressPercent.toFixed(0)}%)</span>
+                <span>
+                  {totalCredits != null ? totalCredits : 0}/{requiredCredits} tín chỉ ({progressPercent}%)
+                </span>
               </div>
               <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+                <div
+                  className="progress-fill"
+                  style={{ width: progressPercent + "%" }}
+                />
               </div>
             </div>
           </div>
@@ -105,41 +167,70 @@ export default function StudentDashboard() {
                 <Calendar />
                 Lịch học hôm nay
               </h2>
-              <span className="badge badge-outline">Thứ 2, 20/01/2025</span>
+              <span className="badge badge-outline">{todayLabel}</span>
             </div>
             <div className="card-content">
-              {todaySchedule.map((item, index) => (
-                <div key={index} className="schedule-item" style={{ marginBottom: index < todaySchedule.length - 1 ? '1rem' : 0 }}>
-                  <div className="schedule-icon">
-                    <Clock />
-                  </div>
-                  <div className="schedule-info">
-                    <div className="schedule-header">
-                      <h4 className="schedule-subject">{item.subject}</h4>
-                      <span className={`badge ${item.type === "Lý thuyết" ? "badge-primary" : "badge-secondary"}`}>
-                        {item.type}
-                      </span>
-                    </div>
-                    <div className="schedule-meta">
-                      <span className="schedule-meta-item">
-                        <Clock />
-                        {item.time}
-                      </span>
-                      <span className="schedule-meta-item">
-                        <MapPin />
-                        {item.room}
-                      </span>
-                      <span className="schedule-meta-item">
-                        <GraduationCap />
-                        {item.teacher}
-                      </span>
-                    </div>
-                  </div>
+              {scheduleLoading ? (
+                <div style={{ padding: "1rem", color: "var(--muted-foreground)" }}>
+                  Đang tải...
                 </div>
-              ))}
-              <button className="btn btn-ghost text-primary" style={{ width: '100%', marginTop: '1rem' }}>
-                Xem thời khóa biểu đầy đủ <ChevronRight />
-              </button>
+              ) : todaySchedules.length === 0 ? (
+                <div style={{
+                  padding: "2rem", textAlign: "center",
+                  color: "var(--muted-foreground)",
+                }}>
+                  Hôm nay không có lịch học
+                </div>
+              ) : (
+                todaySchedules.map(function (item, index) {
+                  var isLast = index === todaySchedules.length - 1
+                  var startTime = item.start_time ? item.start_time.slice(0, 5) : ""
+                  var endTime = item.end_time ? item.end_time.slice(0, 5) : ""
+                  var typeBadge = item.type === "Lý thuyết" ? "badge-primary" : "badge-secondary"
+
+                  return (
+                    <div
+                      key={item.id || index}
+                      className="schedule-item"
+                      style={{ marginBottom: isLast ? 0 : "1rem" }}
+                    >
+                      <div className="schedule-icon">
+                        <Clock />
+                      </div>
+                      <div className="schedule-info">
+                        <div className="schedule-header">
+                          <h4 className="schedule-subject">
+                            {item.course_name}
+                          </h4>
+                          <span className={"badge " + typeBadge}>
+                            {item.type || "Lý thuyết"}
+                          </span>
+                        </div>
+                        <div className="schedule-meta">
+                          {startTime && endTime && (
+                            <span className="schedule-meta-item">
+                              <Clock size={14} />
+                              {startTime} - {endTime}
+                            </span>
+                          )}
+                          {item.room && (
+                            <span className="schedule-meta-item">
+                              <MapPin size={14} />
+                              {item.room}
+                            </span>
+                          )}
+                          {item.instructor_name && (
+                            <span className="schedule-meta-item">
+                              <GraduationCap size={14} />
+                              {item.instructor_name}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
 
@@ -150,22 +241,57 @@ export default function StudentDashboard() {
                 <Bell />
                 Thông báo mới
               </h2>
-              <span className="badge badge-primary">3</span>
+              {notifications.length > 0 && (
+                <span className="badge badge-primary">
+                  {notifications.filter(function (n) { return !n.is_read }).length}
+                </span>
+              )}
             </div>
             <div className="card-content">
-              {notifications.map((item, index) => (
-                <div key={index} className="notification-item" style={{ marginBottom: index < notifications.length - 1 ? '1rem' : 0 }}>
-                  <div className={`notification-dot ${item.unread ? 'unread' : 'read'}`} />
-                  <div className="notification-content">
-                    <p className={`notification-title ${!item.unread ? 'read' : ''}`}>{item.title}</p>
-                    <p className="notification-text">{item.content}</p>
-                    <p className="notification-time">{item.time}</p>
-                  </div>
+              {notifLoading ? (
+                <div style={{ padding: "1rem", color: "var(--muted-foreground)" }}>
+                  Đang tải...
                 </div>
-              ))}
-              <button className="btn btn-ghost text-primary" style={{ width: '100%', marginTop: '1rem' }}>
-                Xem tất cả thông báo <ChevronRight />
-              </button>
+              ) : notifications.length === 0 ? (
+                <div style={{
+                  padding: "2rem", textAlign: "center",
+                  color: "var(--muted-foreground)",
+                }}>
+                  Không có thông báo mới
+                </div>
+              ) : (
+                notifications.slice(0, 3).map(function (item, index) {
+                  var isLast = index === 2
+                  var dotClass = item.is_read ? "read" : "unread"
+                  var titleClass = "notification-title" + (item.is_read ? " read" : "")
+                  var dateStr = item.created_at
+                    ? new Date(item.created_at).toLocaleDateString("vi-VN")
+                    : ""
+
+                  return (
+                    <div
+                      key={item.id || index}
+                      className="notification-item"
+                      style={{ marginBottom: isLast ? 0 : "1rem" }}
+                    >
+                      <div className={"notification-dot " + dotClass} />
+                      <div className="notification-content">
+                        <p className={titleClass}>{item.title}</p>
+                        <p className="notification-text">{item.content}</p>
+                        <p className="notification-time">{dateStr}</p>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+              {notifications.length > 0 && (
+                <button
+                  className="btn btn-ghost text-primary"
+                  style={{ width: "100%", marginTop: "1rem" }}
+                >
+                  Xem tất cả thông báo <ChevronRight size={16} />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -177,7 +303,11 @@ export default function StudentDashboard() {
               <BookOpen />
             </div>
             <div>
-              <p className="quick-stat-value">6</p>
+              <p className="quick-stat-value">
+                {statsLoading ? "..." : dashStats && dashStats.courses != null
+                  ? dashStats.courses
+                  : "—"}
+              </p>
               <p className="quick-stat-label">Môn học kỳ này</p>
             </div>
           </div>
@@ -186,7 +316,11 @@ export default function StudentDashboard() {
               <FileText />
             </div>
             <div>
-              <p className="quick-stat-value">18</p>
+              <p className="quick-stat-value">
+                {statsLoading ? "..." : dashStats && dashStats.credits != null
+                  ? dashStats.credits
+                  : "—"}
+              </p>
               <p className="quick-stat-label">Tín chỉ đăng ký</p>
             </div>
           </div>
@@ -195,7 +329,11 @@ export default function StudentDashboard() {
               <Calendar />
             </div>
             <div>
-              <p className="quick-stat-value">3</p>
+              <p className="quick-stat-value">
+                {statsLoading ? "..." : dashStats && dashStats.upcomingExams != null
+                  ? dashStats.upcomingExams
+                  : "—"}
+              </p>
               <p className="quick-stat-label">Bài kiểm tra sắp tới</p>
             </div>
           </div>
@@ -204,7 +342,9 @@ export default function StudentDashboard() {
               <CreditCard />
             </div>
             <div>
-              <p className="quick-stat-value success">Đã nộp</p>
+              <p className={"quick-stat-value" + (tuitionStatus === "Đã thanh toán" ? " success" : "")}>
+                {statsLoading ? "..." : tuitionStatus != null ? tuitionStatus : "—"}
+              </p>
               <p className="quick-stat-label">Học phí HK này</p>
             </div>
           </div>
@@ -215,46 +355,71 @@ export default function StudentDashboard() {
           <div className="card-header">
             <h2 className="card-title">
               <FileText />
-              Điểm học kỳ gần nhất
+              Điểm gần nhất
             </h2>
             <button className="btn btn-ghost btn-sm text-primary">
-              Xem tất cả <ChevronRight />
+              Xem tất cả <ChevronRight size={16} />
             </button>
           </div>
           <div className="card-content">
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Môn học</th>
-                    <th className="text-center">Số TC</th>
-                    <th className="text-center">Giữa kỳ</th>
-                    <th className="text-center">Cuối kỳ</th>
-                    <th className="text-center">Điểm TB</th>
-                    <th className="text-center">Xếp loại</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentGrades.map((grade, index) => (
-                    <tr key={index}>
-                      <td className="font-medium">{grade.subject}</td>
-                      <td className="text-center">{grade.credits}</td>
-                      <td className="text-center">{grade.midterm}</td>
-                      <td className="text-center">{grade.final}</td>
-                      <td className="text-center font-semibold">{grade.gpa}</td>
-                      <td className="text-center">
-                        <span className={`badge ${
-                          grade.gpa >= 8.5 ? "badge-primary" :
-                          grade.gpa >= 7 ? "badge-info" : "badge-outline"
-                        }`}>
-                          {grade.gpa >= 8.5 ? "Giỏi" : grade.gpa >= 7 ? "Khá" : "TB"}
-                        </span>
-                      </td>
+            {gradesLoading ? (
+              <div style={{ padding: "1rem", color: "var(--muted-foreground)" }}>
+                Đang tải...
+              </div>
+            ) : gradesArray.length === 0 ? (
+              <div style={{
+                padding: "2rem", textAlign: "center",
+                color: "var(--muted-foreground)",
+              }}>
+                Chưa có điểm
+              </div>
+            ) : (
+              <div className="table-wrapper">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Môn học</th>
+                      <th className="text-center">Số TC</th>
+                      <th className="text-center">Giữa kỳ</th>
+                      <th className="text-center">Cuối kỳ</th>
+                      <th className="text-center">Điểm TB</th>
+                      <th className="text-center">Xếp loại</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {gradesArray.map(function (grade, index) {
+                      var letter = grade.letter_grade || ""
+                      var badgeClass = letter.startsWith("A")
+                        ? "badge-primary"
+                        : letter.startsWith("B")
+                        ? "badge-info"
+                        : "badge-outline"
+
+                      return (
+                        <tr key={grade.id || index}>
+                          <td className="font-medium">{grade.course_name}</td>
+                          <td className="text-center">{grade.credits || "—"}</td>
+                          <td className="text-center">
+                            {grade.midterm_score != null ? grade.midterm_score : "—"}
+                          </td>
+                          <td className="text-center">
+                            {grade.final_score != null ? grade.final_score : "—"}
+                          </td>
+                          <td className="text-center font-semibold">
+                            {grade.average_score != null ? grade.average_score : "—"}
+                          </td>
+                          <td className="text-center">
+                            <span className={"badge " + badgeClass}>
+                              {letter || "—"}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </div>
