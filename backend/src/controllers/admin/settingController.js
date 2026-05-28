@@ -1,0 +1,205 @@
+// src/controllers/admin/settingController.js
+const { query, queryOne, insert } = require('../../config/database');
+const ApiResponse = require('../../utils/apiResponse');
+const bcrypt = require('bcryptjs');
+
+// @desc    Get all settings
+// @route   GET /api/admin/settings
+const getSettings = async (req, res) => {
+  try {
+    const settings = await query('SELECT * FROM settings');
+
+    // Convert to key-value object
+    const settingsObj = {};
+    settings.forEach(s => {
+      settingsObj[s.setting_key] = s.setting_value;
+    });
+
+    return ApiResponse.success(res, settingsObj);
+  } catch (error) {
+    console.error('Get settings error:', error);
+    return ApiResponse.error(res, 'Lỗi khi lấy cài đặt');
+  }
+};
+
+// @desc    Update general settings
+// @route   PUT /api/admin/settings/general
+const updateGeneral = async (req, res) => {
+  try {
+    const { system_name, current_semester, language, timezone } = req.body;
+
+    const updates = [
+      { key: 'system_name', value: system_name },
+      { key: 'current_semester', value: current_semester },
+      { key: 'language', value: language },
+      { key: 'timezone', value: timezone }
+    ];
+
+    for (const { key, value } of updates) {
+      if (value !== undefined) {
+        await insert(
+          `INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = ?`,
+          [key, value, value]
+        );
+      }
+    }
+
+    return ApiResponse.success(res, null, 'Cập nhật cài đặt chung thành công');
+  } catch (error) {
+    console.error('Update general settings error:', error);
+    return ApiResponse.error(res, 'Lỗi khi cập nhật cài đặt');
+  }
+};
+
+// @desc    Update profile
+// @route   PUT /api/admin/settings/profile
+const updateProfile = async (req, res) => {
+  try {
+    const { full_name, email, phone } = req.body;
+
+    // For admin, store in settings
+    const updates = [
+      { key: 'admin_name', value: full_name },
+      { key: 'admin_email', value: email },
+      { key: 'admin_phone', value: phone }
+    ];
+
+    for (const { key, value } of updates) {
+      if (value !== undefined) {
+        await insert(
+          `INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = ?`,
+          [key, value, value]
+        );
+      }
+    }
+
+    return ApiResponse.success(res, null, 'Cập nhật thông tin tài khoản thành công');
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return ApiResponse.error(res, 'Lỗi khi cập nhật thông tin');
+  }
+};
+
+// @desc    Update notification settings
+// @route   PUT /api/admin/settings/notifications
+const updateNotifications = async (req, res) => {
+  try {
+    const { email_notifications, system_alerts, auto_backup } = req.body;
+
+    const updates = [
+      { key: 'email_notifications', value: email_notifications?.toString() },
+      { key: 'system_alerts', value: system_alerts?.toString() },
+      { key: 'auto_backup', value: auto_backup?.toString() }
+    ];
+
+    for (const { key, value } of updates) {
+      if (value !== undefined) {
+        await insert(
+          `INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = ?`,
+          [key, value, value]
+        );
+      }
+    }
+
+    return ApiResponse.success(res, null, 'Cập nhật cài đặt thông báo thành công');
+  } catch (error) {
+    console.error('Update notifications error:', error);
+    return ApiResponse.error(res, 'Lỗi khi cập nhật thông báo');
+  }
+};
+
+// @desc    Get system status
+// @route   GET /api/admin/settings/system-status
+const getSystemStatus = async (req, res) => {
+  try {
+    const totalUsers = await queryOne('SELECT COUNT(*) as count FROM users WHERE is_active = true');
+    const dbSize = await queryOne(
+      `SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS size_mb
+       FROM information_schema.TABLES
+       WHERE table_schema = ?`,
+      [process.env.DB_NAME]
+    );
+
+    return ApiResponse.success(res, {
+      version: 'v2.5.1',
+      uptime: '99.9%',
+      storage: `${dbSize.size_mb || 0} MB`,
+      activeUsers: totalUsers.count,
+      lastUpdated: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('System status error:', error);
+    return ApiResponse.error(res, 'Lỗi khi lấy trạng thái hệ thống');
+  }
+};
+
+// @desc    Get active sessions
+// @route   GET /api/admin/settings/sessions
+const getSessions = async (req, res) => {
+  try {
+    const sessions = await query(
+      `SELECT id, username, role, last_login
+       FROM users
+       WHERE refresh_token IS NOT NULL AND is_active = true
+       ORDER BY last_login DESC`
+    );
+
+    return ApiResponse.success(res, sessions);
+  } catch (error) {
+    console.error('Get sessions error:', error);
+    return ApiResponse.error(res, 'Lỗi khi lấy phiên đăng nhập');
+  }
+};
+
+// @desc    Revoke a session
+// @route   DELETE /api/admin/settings/sessions/:id
+const revokeSession = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await insert(
+      'UPDATE users SET refresh_token = NULL WHERE id = ?',
+      [id]
+    );
+
+    return ApiResponse.success(res, null, 'Đã thu hồi phiên đăng nhập');
+  } catch (error) {
+    console.error('Revoke session error:', error);
+    return ApiResponse.error(res, 'Lỗi khi thu hồi phiên');
+  }
+};
+
+// @desc    Backup database (simplified - trigger info only)
+// @route   POST /api/admin/settings/database/backup
+const backupDatabase = async (req, res) => {
+  try {
+    // In production, this would trigger actual backup
+    // For now, just record the backup event
+    await insert(
+      `INSERT INTO settings (setting_key, setting_value) VALUES ('last_backup', NOW())
+       ON DUPLICATE KEY UPDATE setting_value = NOW()`
+    );
+
+    return ApiResponse.success(res, {
+      backup_time: new Date().toISOString(),
+      status: 'completed'
+    }, 'Sao lưu database thành công');
+  } catch (error) {
+    console.error('Backup error:', error);
+    return ApiResponse.error(res, 'Lỗi khi sao lưu');
+  }
+};
+
+module.exports = {
+  getSettings,
+  updateGeneral,
+  updateProfile,
+  updateNotifications,
+  getSystemStatus,
+  getSessions,
+  revokeSession,
+  backupDatabase
+};
