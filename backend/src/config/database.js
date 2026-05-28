@@ -40,7 +40,7 @@ const getPool = () => {
 // Helper: Execute query
 const query = async (sql, params = []) => {
   const pool = getPool();
-  const [rows] = await pool.execute(sql, params);
+  const [rows] = await pool.query(sql, params);
   return rows;
 };
 
@@ -53,7 +53,7 @@ const queryOne = async (sql, params = []) => {
 // Helper: Execute insert and return insertId
 const insert = async (sql, params = []) => {
   const pool = getPool();
-  const [result] = await pool.execute(sql, params);
+  const [result] = await pool.query(sql, params);
   return result;
 };
 

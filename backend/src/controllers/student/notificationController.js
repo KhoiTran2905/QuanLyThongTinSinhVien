@@ -9,17 +9,19 @@ const getNotifications = async (req, res) => {
     const { type, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
-    let whereClause = "WHERE n.target_role IN ('all', 'student')";
-    let params = [];
+    let baseWhere = "WHERE n.target_role IN ('all', 'student') AND (nr.is_deleted IS NULL OR nr.is_deleted = 0)";
+    let params = [req.user.id];
 
     if (type && type !== 'all') {
-      whereClause += ' AND n.type = ?';
+      baseWhere += ' AND n.type = ?';
       params.push(type);
     }
 
     // Count total
     const countResult = await queryOne(
-      `SELECT COUNT(*) as total FROM notifications n ${whereClause}`,
+      `SELECT COUNT(n.id) as total FROM notifications n 
+       LEFT JOIN notification_reads nr ON nr.notification_id = n.id AND nr.user_id = ?
+       ${baseWhere}`,
       params
     );
 
@@ -30,19 +32,19 @@ const getNotifications = async (req, res) => {
               nr.read_at
        FROM notifications n
        LEFT JOIN notification_reads nr ON nr.notification_id = n.id AND nr.user_id = ?
-       ${whereClause}
+       ${baseWhere}
        ORDER BY n.created_at DESC
        LIMIT ? OFFSET ?`,
-      [req.user.id, ...params, parseInt(limit), parseInt(offset)]
+      [...params, parseInt(limit), parseInt(offset)]
     );
 
     // Count unread
     const unread = await queryOne(
-      `SELECT COUNT(*) as count
+      `SELECT COUNT(n.id) as count
        FROM notifications n
        LEFT JOIN notification_reads nr ON nr.notification_id = n.id AND nr.user_id = ?
-       WHERE n.target_role IN ('all', 'student') AND nr.id IS NULL`,
-      [req.user.id]
+       ${baseWhere} AND nr.id IS NULL`,
+      params
     );
 
     return ApiResponse.success(res, {
@@ -90,7 +92,7 @@ const markAllAsRead = async (req, res) => {
       `SELECT n.id
        FROM notifications n
        LEFT JOIN notification_reads nr ON nr.notification_id = n.id AND nr.user_id = ?
-       WHERE n.target_role IN ('all', 'student') AND nr.id IS NULL`,
+       WHERE n.target_role IN ('all', 'student') AND (nr.is_deleted IS NULL OR nr.is_deleted = 0) AND nr.id IS NULL`,
       [req.user.id]
     );
 
@@ -114,12 +116,23 @@ const deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // We don't actually delete the notification, just mark it as read
-    // In a more complex system, we'd have a "hidden" table
-    await insert(
-      `INSERT IGNORE INTO notification_reads (notification_id, user_id) VALUES (?, ?)`,
+    // Check if notification_reads exists
+    const existing = await queryOne(
+      'SELECT id FROM notification_reads WHERE notification_id = ? AND user_id = ?',
       [id, req.user.id]
     );
+
+    if (existing) {
+      await query(
+        'UPDATE notification_reads SET is_deleted = 1 WHERE id = ?',
+        [existing.id]
+      );
+    } else {
+      await query(
+        'INSERT INTO notification_reads (notification_id, user_id, is_deleted) VALUES (?, ?, 1)',
+        [id, req.user.id]
+      );
+    }
 
     return ApiResponse.success(res, null, 'Đã xóa thông báo');
   } catch (error) {
@@ -136,7 +149,7 @@ const getUnreadCount = async (req, res) => {
       `SELECT COUNT(*) as count
        FROM notifications n
        LEFT JOIN notification_reads nr ON nr.notification_id = n.id AND nr.user_id = ?
-       WHERE n.target_role IN ('all', 'student') AND nr.id IS NULL`,
+       WHERE n.target_role IN ('all', 'student') AND (nr.is_deleted IS NULL OR nr.is_deleted = 0) AND nr.id IS NULL`,
       [req.user.id]
     );
 

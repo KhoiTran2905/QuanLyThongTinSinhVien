@@ -37,6 +37,9 @@ export var adminStudentService = {
   delete: function (id) {
     return apiClient.delete('/admin/students/' + id);
   },
+  importExcel: function (formData) {
+    return apiClient.postFormData('/admin/students/import', formData);
+  },
 };
 
 // ===== Instructors =====
@@ -64,30 +67,6 @@ export var instructorService = {
   },
 };
 
-// ===== Courses =====
-export var courseService = {
-  getAll: function (params) {
-    return apiClient.get('/admin/courses', params || {});
-  },
-  getById: function (id) {
-    return apiClient.get('/admin/courses/' + id);
-  },
-  getStats: function () {
-    return apiClient.get('/admin/courses/stats');
-  },
-  getTopEnrolled: function () {
-    return apiClient.get('/admin/courses/top-enrolled');
-  },
-  create: function (data) {
-    return apiClient.post('/admin/courses', data);
-  },
-  update: function (id, data) {
-    return apiClient.put('/admin/courses/' + id, data);
-  },
-  delete: function (id) {
-    return apiClient.delete('/admin/courses/' + id);
-  },
-};
 
 // ===== Classes =====
 export var classService = {
@@ -114,33 +93,11 @@ export var classService = {
   },
 };
 
-// ===== Schedules =====
-export var adminScheduleService = {
-  getAll: function (params) {
-    return apiClient.get('/admin/schedules', params || {});
-  },
-  getByWeek: function (year, weekNum, params) {
-    return apiClient.get(
-      '/admin/schedules/week/' + year + '/' + weekNum,
-      params || {}
-    );
-  },
-  getStats: function () {
-    return apiClient.get('/admin/schedules/stats');
-  },
-  create: function (data) {
-    return apiClient.post('/admin/schedules', data);
-  },
-  update: function (id, data) {
-    return apiClient.put('/admin/schedules/' + id, data);
-  },
-  delete: function (id) {
-    return apiClient.delete('/admin/schedules/' + id);
-  },
-};
-
 // ===== Grades =====
 export var adminGradeService = {
+  getFormOptions: function () {
+    return apiClient.get('/admin/grades/options/form-data');
+  },
   getAll: function (params) {
     return apiClient.get('/admin/grades', params || {});
   },
@@ -168,9 +125,15 @@ export var adminGradeService = {
   reject: function (id) {
     return apiClient.put('/admin/grades/' + id + '/reject');
   },
+  delete: function (id) {
+    return apiClient.delete('/admin/grades/' + id);
+  },
   approveAll: function (data) {
     return apiClient.put('/admin/grades/approve-all', data);
   },
+  importGrades: function (formData) {
+    return apiClient.postFormData('/admin/grades/import', formData);
+  }
 };
 
 // ===== Reports =====
@@ -212,6 +175,9 @@ export var settingService = {
   updateProfile: function (data) {
     return apiClient.put('/admin/settings/profile', data);
   },
+  changePassword: function (data) {
+    return apiClient.put('/admin/settings/password', data);
+  },
   updateNotifications: function (data) {
     return apiClient.put('/admin/settings/notifications', data);
   },
@@ -226,5 +192,104 @@ export var settingService = {
   },
   backupDatabase: function () {
     return apiClient.post('/admin/settings/database/backup');
+  },
+};
+
+// ===== Tuitions =====
+export var adminTuitionService = {
+  getAll: function (params) {
+    return apiClient.get('/admin/tuitions', params || {});
+  },
+  getStats: function (params) {
+    return apiClient.get('/admin/tuitions/stats', params || {});
+  },
+  updateStatus: function (id, data) {
+    return apiClient.put('/admin/tuitions/' + id + '/status', data);
+  },
+};
+
+// ===== Notifications =====
+export var adminNotificationService = {
+  getAll: function (params) {
+    return apiClient.get('/admin/notifications', params || {});
+  },
+  create: function (data) {
+    return apiClient.post('/admin/notifications', data);
+  },
+  update: function (id, data) {
+    return apiClient.put('/admin/notifications/' + id, data);
+  },
+  delete: function (id) {
+    return apiClient.delete('/admin/notifications/' + id);
+  },
+  getStats: function () {
+    return apiClient.get('/admin/notifications/stats');
+  },
+};
+
+// ===== Events =====
+export var adminEventService = {
+  getAll: function (params) {
+    return apiClient.get('/admin/events', params || {});
+  },
+  create: function (data) {
+    return apiClient.post('/admin/events', data);
+  },
+  update: function (id, data) {
+    return apiClient.put('/admin/events/' + id, data);
+  },
+  delete: function (id) {
+    return apiClient.delete('/admin/events/' + id);
+  },
+};
+
+// ===== Cohorts (Khóa học) =====
+export var cohortService = {
+  getAll: function (params) {
+    return apiClient.get('/admin/cohorts', params || {});
+  },
+  getById: function (id) {
+    return apiClient.get('/admin/cohorts/' + id);
+  },
+  create: function (data) {
+    return apiClient.post('/admin/cohorts', data);
+  },
+  update: function (id, data) {
+    return apiClient.put('/admin/cohorts/' + id, data);
+  },
+  delete: function (id) {
+    return apiClient.delete('/admin/cohorts/' + id);
+  },
+};
+
+// ===== Departments =====
+export var adminDepartmentService = {
+  getAll: function () {
+    return apiClient.get('/admin/departments');
+  },
+  create: function (data) {
+    return apiClient.post('/admin/departments', data);
+  },
+  update: function (id, data) {
+    return apiClient.put('/admin/departments/' + id, data);
+  },
+  delete: function (id) {
+    return apiClient.delete('/admin/departments/' + id);
+  },
+};
+
+// ===== Majors =====
+export var adminMajorService = {
+  getAll: function () {
+    return apiClient.get('/admin/majors');
+  },
+  create: function (data) {
+    return apiClient.post('/admin/majors', data);
+  },
+  update: function (id, data) {
+    return apiClient.put('/admin/majors/' + id, data);
+  },
+  delete: function (id) {
+    return apiClient.delete('/admin/majors/' + id);
   },
 };

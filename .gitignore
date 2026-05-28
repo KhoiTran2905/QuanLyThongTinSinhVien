@@ -1,0 +1,77 @@
+
+node_modules/
+
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# nested env files
+**/.env
+**/.env.local
+**/.env.development
+**/.env.production
+**/.env.test
+
+# ===== NEXT.JS BUILD OUTPUT =====
+.next/
+out/
+build/
+
+# ===== BACKEND UPLOADS =====
+uploads/
+backend/uploads/
+
+# ===== DEBUG / SCRATCH FILES =====
+scratch.js
+patch_frontend.js
+
+# ===== LOGS =====
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== COVERAGE / BUILD =====
+coverage/
+dist/
+
+# ===== TEMP / RUNTIME =====
+*.pid
+*.pid.lock
+*.seed
+
+# ===== IDE / EDITOR =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ===== OS FILES =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# ===== TURBOPACK / NEXT CACHE =====
+.next/cache/
+
+# ===== TYPESCRIPT =====
+*.tsbuildinfo
+
+# ===== OPTIONAL LOCK FILES =====
+# Giữ lại package manager bạn dùng
+
+# npm
+# package-lock.json
+
+# pnpm
+# pnpm-lock.yaml
+
+# yarn
+# yarn.lock

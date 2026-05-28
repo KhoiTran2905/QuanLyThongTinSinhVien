@@ -4,13 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { User, Lock, Eye, EyeOff, ArrowRight, Shield, ShieldCheck } from "lucide-react"
 import "@/styles/login.css"
-
-// Demo accounts
-const users = {
-  admin: { password: "admin123", role: "admin", name: "Admin PTIT" },
-  "B21DCCN001": { password: "123456", role: "student", name: "Nguyễn Văn A" },
-  "B21DCCN002": { password: "123456", role: "student", name: "Trần Thị B" },
-}
+import authService from "@/lib/services/authService"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -18,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
@@ -26,37 +21,28 @@ export default function LoginPage() {
     setError("")
     setLoading(true)
 
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    const user = users[username]
-    
-    if (!user) {
-      setError("Tài khoản không tồn tại")
+    try {
+      const response = await authService.login(username, password)
+      
+      const { user, accessToken, refreshToken } = response.data
+      
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ptit_token", accessToken)
+        if (refreshToken) {
+          localStorage.setItem("ptit_refresh_token", refreshToken)
+        }
+        localStorage.setItem("ptit_user", JSON.stringify(user))
+      }
+      
+      if (user.role === "admin") {
+        router.push("/admin")
+      } else {
+        router.push("/student")
+      }
+    } catch (err) {
+      setError(err.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.")
+    } finally {
       setLoading(false)
-      return
-    }
-
-    if (user.password !== password) {
-      setError("Mật khẩu không chính xác")
-      setLoading(false)
-      return
-    }
-
-    // Store user info in localStorage
-    if (typeof window !== "undefined") {
-      localStorage.setItem("user", JSON.stringify({
-        username,
-        role: user.role,
-        name: user.name
-      }))
-    }
-
-    // Redirect based on role
-    if (user.role === "admin") {
-      router.push("/admin")
-    } else {
-      router.push("/student")
     }
   }
 
@@ -172,7 +158,7 @@ export default function LoginPage() {
                 />
                 <span>Ghi nhớ đăng nhập</span>
               </label>
-              <a href="#" className="form-link">Quên mật khẩu?</a>
+              <a href="#" className="form-link" onClick={(e) => { e.preventDefault(); setShowForgotPassword(true); }}>Quên mật khẩu?</a>
             </div>
 
             {/* Submit Button */}
@@ -204,23 +190,35 @@ export default function LoginPage() {
               </div>
             </div>
           </form>
-
-          {/* Demo Accounts Info */}
-          <div className="demo-accounts">
-            <p className="demo-accounts-title">Tài khoản demo:</p>
-            <div className="demo-accounts-list">
-              <div className="demo-account">
-                <span className="demo-account-role">Admin:</span>
-                <span>admin / admin123</span>
-              </div>
-              <div className="demo-account">
-                <span className="demo-account-role">Sinh viên:</span>
-                <span>B21DCCN001 / 123456</span>
-              </div>
+        </div>
+      </div>
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: "var(--card)", padding: "2rem", borderRadius: "0.75rem", width: 450, maxWidth: "90%", border: "1px solid var(--border)", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)" }}>
+            <h3 style={{ fontWeight: 700, margin: "0 0 1rem 0", fontSize: "18px", color: "var(--foreground)" }}>Khôi phục mật khẩu</h3>
+            <div style={{ padding: "1rem", background: "rgba(37,99,235,0.05)", borderLeft: "4px solid #2563eb", borderRadius: "4px", marginBottom: "1.5rem" }}>
+              <p style={{ color: "var(--foreground)", marginBottom: "0.75rem", fontSize: "14px", lineHeight: "1.5" }}>
+                Để đảm bảo tính bảo mật của hệ thống, vui lòng liên hệ trực tiếp với các đơn vị sau để được hỗ trợ cấp lại mật khẩu:
+              </p>
+              <ul style={{ color: "var(--muted-foreground)", fontSize: "14px", lineHeight: "1.6", margin: 0, paddingLeft: "1.25rem" }}>
+                <li><strong>Phòng Đào tạo:</strong> (024) 3854 5272</li>
+                <li><strong>Phòng Công tác SV:</strong> (024) 3854 7795</li>
+                <li><strong>IT Support:</strong> cskh@ptit.edu.vn</li>
+              </ul>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={() => setShowForgotPassword(false)}
+              >
+                Đã hiểu
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

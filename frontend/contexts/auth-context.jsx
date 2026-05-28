@@ -9,12 +9,12 @@ const AuthContext = createContext(undefined);
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-async function apiLogin(username, password) {
+async function apiLogin(username, password, rememberMe) {
   const response = await fetch(API_BASE_URL + '/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, rememberMe }),
   });
 
   const data = await response.json();
@@ -134,13 +134,15 @@ export function AuthProvider({ children }) {
             const refreshResponse =
               await apiRefreshToken(refreshToken);
 
+            const newToken = refreshResponse.data.token || refreshResponse.data.accessToken;
+
             if (
               refreshResponse.data &&
-              refreshResponse.data.token
+              newToken
             ) {
               localStorage.setItem(
                 'ptit_token',
-                refreshResponse.data.token
+                newToken
               );
 
               if (refreshResponse.data.refreshToken) {
@@ -152,7 +154,7 @@ export function AuthProvider({ children }) {
 
               // Thử getMe lại với token mới
               const retryResponse = await apiGetMe(
-                refreshResponse.data.token
+                newToken
               );
 
               if (
@@ -188,7 +190,7 @@ export function AuthProvider({ children }) {
     initAuth();
   }, []);
 
-  const login = useCallback(async (username, password) => {
+  const login = useCallback(async (username, password, rememberMe) => {
     try {
       const response = await apiLogin(username, password);
 
@@ -196,12 +198,15 @@ export function AuthProvider({ children }) {
         const {
           user: userData,
           token,
+          accessToken,
           refreshToken,
         } = response.data;
 
+        const finalToken = token || accessToken;
+
         // Lưu tokens
-        if (token) {
-          localStorage.setItem('ptit_token', token);
+        if (finalToken) {
+          localStorage.setItem('ptit_token', finalToken);
         }
 
         if (refreshToken) {

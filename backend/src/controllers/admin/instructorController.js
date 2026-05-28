@@ -60,7 +60,7 @@ const getAllInstructors = async (req, res) => {
     return ApiResponse.paginated(res, instructors, pagination);
   } catch (error) {
     console.error('Get all instructors error:', error);
-    return ApiResponse.error(res, 'Lỗi khi lấy danh sách giảng viên');
+    return ApiResponse.error(res, 'Lỗi khi lấy danh sách giảng viên: ' + error.message);
   }
 };
 
@@ -171,7 +171,11 @@ const updateInstructor = async (req, res) => {
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
         updates.push(`${field} = ?`);
-        values.push(updateData[field]);
+        let val = updateData[field];
+        if (val === "" && field === 'department_id') {
+          val = null;
+        }
+        values.push(val);
       }
     }
 

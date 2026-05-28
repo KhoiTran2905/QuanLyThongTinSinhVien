@@ -4,10 +4,17 @@ export function StatCard({
   description,
   icon: Icon,
   trend,
-  variant = "default"
+  variant = "default",
+  onClick
 }) {
   return (
-    <div className={`stat-card ${variant === "primary" ? "primary" : ""}`}>
+    <div 
+      className={`stat-card ${variant === "primary" ? "primary" : ""}`}
+      onClick={onClick}
+      style={onClick ? { cursor: 'pointer', transition: 'transform 0.2s' } : {}}
+      onMouseEnter={(e) => { if (onClick) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+      onMouseLeave={(e) => { if (onClick) e.currentTarget.style.transform = 'translateY(0)'; }}
+    >
       <div className="stat-card-content">
         <div className="stat-card-info">
           <p className="stat-card-label">{title}</p>

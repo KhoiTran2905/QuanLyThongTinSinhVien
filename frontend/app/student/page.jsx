@@ -1,6 +1,7 @@
 
 "use client"
 
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { Header } from "@/components/dashboard/header"
 import { useApi } from "@/hooks/use-api"
@@ -21,6 +22,7 @@ import {
 
 export default function StudentDashboard() {
   const { user } = useAuth()
+  const router = useRouter()
 
   const { data: dashboard, loading: dashLoading } = useApi(
     studentDashboardService.getDashboard,
@@ -107,7 +109,11 @@ export default function StudentDashboard() {
       <Header title="Tổng quan" />
 
       <div className="dashboard-body">
-        {/* Welcome Card */}
+
+        <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          {/* Cột trái */}
+          <div style={{ flex: '1 1 0%', minWidth: '60%', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {/* Welcome Card */}
         <div className="welcome-card">
           <div className="welcome-content">
             <div className="welcome-top">
@@ -157,186 +163,9 @@ export default function StudentDashboard() {
             </div>
           </div>
         </div>
-
-        {/* Content Grid */}
-        <div className="content-grid">
-          {/* Today Schedule */}
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">
-                <Calendar />
-                Lịch học hôm nay
-              </h2>
-              <span className="badge badge-outline">{todayLabel}</span>
-            </div>
-            <div className="card-content">
-              {scheduleLoading ? (
-                <div style={{ padding: "1rem", color: "var(--muted-foreground)" }}>
-                  Đang tải...
-                </div>
-              ) : todaySchedules.length === 0 ? (
-                <div style={{
-                  padding: "2rem", textAlign: "center",
-                  color: "var(--muted-foreground)",
-                }}>
-                  Hôm nay không có lịch học
-                </div>
-              ) : (
-                todaySchedules.map(function (item, index) {
-                  var isLast = index === todaySchedules.length - 1
-                  var startTime = item.start_time ? item.start_time.slice(0, 5) : ""
-                  var endTime = item.end_time ? item.end_time.slice(0, 5) : ""
-                  var typeBadge = item.type === "Lý thuyết" ? "badge-primary" : "badge-secondary"
-
-                  return (
-                    <div
-                      key={item.id || index}
-                      className="schedule-item"
-                      style={{ marginBottom: isLast ? 0 : "1rem" }}
-                    >
-                      <div className="schedule-icon">
-                        <Clock />
-                      </div>
-                      <div className="schedule-info">
-                        <div className="schedule-header">
-                          <h4 className="schedule-subject">
-                            {item.course_name}
-                          </h4>
-                          <span className={"badge " + typeBadge}>
-                            {item.type || "Lý thuyết"}
-                          </span>
-                        </div>
-                        <div className="schedule-meta">
-                          {startTime && endTime && (
-                            <span className="schedule-meta-item">
-                              <Clock size={14} />
-                              {startTime} - {endTime}
-                            </span>
-                          )}
-                          {item.room && (
-                            <span className="schedule-meta-item">
-                              <MapPin size={14} />
-                              {item.room}
-                            </span>
-                          )}
-                          {item.instructor_name && (
-                            <span className="schedule-meta-item">
-                              <GraduationCap size={14} />
-                              {item.instructor_name}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Notifications */}
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">
-                <Bell />
-                Thông báo mới
-              </h2>
-              {notifications.length > 0 && (
-                <span className="badge badge-primary">
-                  {notifications.filter(function (n) { return !n.is_read }).length}
-                </span>
-              )}
-            </div>
-            <div className="card-content">
-              {notifLoading ? (
-                <div style={{ padding: "1rem", color: "var(--muted-foreground)" }}>
-                  Đang tải...
-                </div>
-              ) : notifications.length === 0 ? (
-                <div style={{
-                  padding: "2rem", textAlign: "center",
-                  color: "var(--muted-foreground)",
-                }}>
-                  Không có thông báo mới
-                </div>
-              ) : (
-                notifications.slice(0, 3).map(function (item, index) {
-                  var isLast = index === 2
-                  var dotClass = item.is_read ? "read" : "unread"
-                  var titleClass = "notification-title" + (item.is_read ? " read" : "")
-                  var dateStr = item.created_at
-                    ? new Date(item.created_at).toLocaleDateString("vi-VN")
-                    : ""
-
-                  return (
-                    <div
-                      key={item.id || index}
-                      className="notification-item"
-                      style={{ marginBottom: isLast ? 0 : "1rem" }}
-                    >
-                      <div className={"notification-dot " + dotClass} />
-                      <div className="notification-content">
-                        <p className={titleClass}>{item.title}</p>
-                        <p className="notification-text">{item.content}</p>
-                        <p className="notification-time">{dateStr}</p>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-              {notifications.length > 0 && (
-                <button
-                  className="btn btn-ghost text-primary"
-                  style={{ width: "100%", marginTop: "1rem" }}
-                >
-                  Xem tất cả thông báo <ChevronRight size={16} />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
+            {/* Quick Stats */}
         <div className="quick-stats-grid">
-          <div className="quick-stat-card">
-            <div className="quick-stat-icon primary">
-              <BookOpen />
-            </div>
-            <div>
-              <p className="quick-stat-value">
-                {statsLoading ? "..." : dashStats && dashStats.courses != null
-                  ? dashStats.courses
-                  : "—"}
-              </p>
-              <p className="quick-stat-label">Môn học kỳ này</p>
-            </div>
-          </div>
-          <div className="quick-stat-card">
-            <div className="quick-stat-icon green">
-              <FileText />
-            </div>
-            <div>
-              <p className="quick-stat-value">
-                {statsLoading ? "..." : dashStats && dashStats.credits != null
-                  ? dashStats.credits
-                  : "—"}
-              </p>
-              <p className="quick-stat-label">Tín chỉ đăng ký</p>
-            </div>
-          </div>
-          <div className="quick-stat-card">
-            <div className="quick-stat-icon yellow">
-              <Calendar />
-            </div>
-            <div>
-              <p className="quick-stat-value">
-                {statsLoading ? "..." : dashStats && dashStats.upcomingExams != null
-                  ? dashStats.upcomingExams
-                  : "—"}
-              </p>
-              <p className="quick-stat-label">Bài kiểm tra sắp tới</p>
-            </div>
-          </div>
+
           <div className="quick-stat-card">
             <div className="quick-stat-icon blue">
               <CreditCard />
@@ -349,15 +178,14 @@ export default function StudentDashboard() {
             </div>
           </div>
         </div>
-
-        {/* Recent Grades */}
+            {/* Recent Grades */}
         <div className="card">
           <div className="card-header">
             <h2 className="card-title">
               <FileText />
               Điểm gần nhất
             </h2>
-            <button className="btn btn-ghost btn-sm text-primary">
+            <button className="btn btn-ghost btn-sm text-primary" onClick={() => router.push('/student/grades')}>
               Xem tất cả <ChevronRight size={16} />
             </button>
           </div>
@@ -422,6 +250,75 @@ export default function StudentDashboard() {
             )}
           </div>
         </div>
+          </div>
+          
+          {/* Cột phải */}
+          <div style={{ flex: '0 0 350px' }}>
+            {/* Notifications */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">
+                <Bell />
+                Thông báo mới
+              </h2>
+              {notifications.length > 0 && (
+                <span className="badge badge-primary">
+                  {notifications.filter(function (n) { return !n.is_read }).length}
+                </span>
+              )}
+            </div>
+            <div className="card-content">
+              {notifLoading ? (
+                <div style={{ padding: "1rem", color: "var(--muted-foreground)" }}>
+                  Đang tải...
+                </div>
+              ) : notifications.length === 0 ? (
+                <div style={{
+                  padding: "2rem", textAlign: "center",
+                  color: "var(--muted-foreground)",
+                }}>
+                  Không có thông báo mới
+                </div>
+              ) : (
+                notifications.slice(0, 3).map(function (item, index) {
+                  var isLast = index === 2
+                  var dotClass = item.is_read ? "read" : "unread"
+                  var titleClass = "notification-title" + (item.is_read ? " read" : "")
+                  var dateStr = item.created_at
+                    ? new Date(item.created_at).toLocaleDateString("vi-VN")
+                    : ""
+
+                  return (
+                    <div
+                      key={item.id || index}
+                      className="notification-item"
+                      style={{ marginBottom: isLast ? 0 : "1rem" }}
+                    >
+                      <div className={"notification-dot " + dotClass} />
+                      <div className="notification-content">
+                        <p className={titleClass}>{item.title}</p>
+                        <p className="notification-text">{item.content}</p>
+                        <p className="notification-time">{dateStr}</p>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+              {notifications.length > 0 && (
+                <button
+                  className="btn btn-ghost text-primary"
+                  style={{ width: "100%", marginTop: "1rem" }}
+                  onClick={() => router.push('/student/notifications')}
+                >
+                  Xem tất cả thông báo <ChevronRight size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+        
+          </div>
+        </div>
+
       </div>
     </div>
   )

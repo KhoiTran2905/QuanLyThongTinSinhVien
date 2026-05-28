@@ -45,10 +45,12 @@ const getAllClasses = async (req, res) => {
     );
 
     const classes = await query(
-      `SELECT cl.*,
+      `SELECT cl.id, cl.class_code, cl.name, cl.department_id, cl.major_id, cl.academic_year, cl.advisor_id, cl.status, cl.created_at,
               d.name as department_name,
               m.name as major_name,
-              i.full_name as advisor_name
+              i.full_name as advisor_name,
+              (SELECT COUNT(*) FROM students s WHERE s.class_id = cl.id) as total_students,
+              (SELECT AVG(s.gpa) FROM students s WHERE s.class_id = cl.id AND s.gpa > 0) as avg_gpa
        FROM classes cl
        LEFT JOIN departments d ON cl.department_id = d.id
        LEFT JOIN majors m ON cl.major_id = m.id
@@ -75,10 +77,12 @@ const getClassById = async (req, res) => {
     const { id } = req.params;
 
     const classData = await queryOne(
-      `SELECT cl.*,
+      `SELECT cl.id, cl.class_code, cl.name, cl.department_id, cl.major_id, cl.academic_year, cl.advisor_id, cl.status, cl.created_at,
               d.name as department_name,
               m.name as major_name,
-              i.full_name as advisor_name, i.email as advisor_email
+              i.full_name as advisor_name, i.email as advisor_email,
+              (SELECT COUNT(*) FROM students s WHERE s.class_id = cl.id) as total_students,
+              (SELECT AVG(s.gpa) FROM students s WHERE s.class_id = cl.id AND s.gpa > 0) as avg_gpa
        FROM classes cl
        LEFT JOIN departments d ON cl.department_id = d.id
        LEFT JOIN majors m ON cl.major_id = m.id
@@ -187,7 +191,11 @@ const updateClass = async (req, res) => {
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
         updates.push(`${field} = ?`);
-        values.push(updateData[field]);
+        let val = updateData[field];
+        if (val === "" && ['department_id', 'major_id', 'advisor_id'].includes(field)) {
+          val = null;
+        }
+        values.push(val);
       }
     }
 
@@ -224,6 +232,9 @@ const deleteClass = async (req, res) => {
     if (students.count > 0) {
       return ApiResponse.badRequest(res, 'Không thể xóa lớp học đang có sinh viên');
     }
+
+    // Xóa các lịch học liên quan đến lớp này trước để tránh lỗi khóa ngoại (foreign key)
+    await insert('DELETE FROM schedules WHERE class_id = ?', [id]);
 
     await insert('DELETE FROM classes WHERE id = ?', [id]);
 

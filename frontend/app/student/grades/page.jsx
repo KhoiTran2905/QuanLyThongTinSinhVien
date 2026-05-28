@@ -11,7 +11,8 @@ import {
 } from "lucide-react"
 
 export default function GradesPage() {
-  const [selectedSemester, setSelectedSemester] = useState("")
+  const [selectedYear, setSelectedYear] = useState("")
+  const [selectedTerm, setSelectedTerm] = useState("")
 
   const { data: overview, loading: overviewLoading } = useApi(
     gradeService.getOverview,
@@ -19,20 +20,30 @@ export default function GradesPage() {
     { defaultData: {} }
   )
 
+  // Static rich list of available years and terms for the filter
+  var availableYears = ["2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"];
+  var availableTerms = ["1", "2", "3"];
+
   // Set default semester khi overview load xong
   useEffect(function () {
     if (overview && Array.isArray(overview.semesters) && overview.semesters.length > 0) {
-      if (!selectedSemester) {
-        setSelectedSemester(overview.semesters[overview.semesters.length - 1])
+      const latest = overview.semesters[overview.semesters.length - 1];
+      const match = latest.match(/HK(\d)\s*\((.*)\)/);
+      if (match) {
+        if (!selectedYear) setSelectedYear(match[2]);
+        if (!selectedTerm) setSelectedTerm(match[1]);
       }
     }
-  }, [overview])
+  }, [overview, selectedYear, selectedTerm])
+
+  // Compute actual semester code
+  const selectedSemester = (selectedYear && selectedTerm) ? "HK" + selectedTerm + " (" + selectedYear + ")" : "";
 
   var semesters = overview && Array.isArray(overview.semesters)
     ? overview.semesters
     : []
 
-  const { data: semesterData, loading: semLoading } = useApi(
+  const { data: semesterData, loading: semLoading, refetch: refetchSemester } = useApi(
     function () {
       if (!selectedSemester) return Promise.resolve({ data: { grades: [], summary: {} } })
       return gradeService.getBySemester(selectedSemester)
@@ -40,6 +51,8 @@ export default function GradesPage() {
     [selectedSemester],
     { defaultData: { grades: [], summary: {} } }
   )
+
+  // Automatic refetching removed; now triggered by the confirm button
 
   var grades = semesterData && Array.isArray(semesterData.grades)
     ? semesterData.grades
@@ -77,6 +90,50 @@ export default function GradesPage() {
     { label: "D (4.0-5.4)", badge: "badge-danger", gpa: "1.0" },
     { label: "F (< 4.0)", badge: "badge-danger", gpa: "0" },
   ]
+
+  function handleExport() {
+    if (!grades || grades.length === 0) {
+      alert("Không có dữ liệu điểm để xuất.");
+      return;
+    }
+    
+    // Create CSV content
+    var headers = ["Mã môn", "Tên môn học", "TC", "Chuyên cần", "Giữa kỳ", "Cuối kỳ", "TB Môn", "Điểm chữ", "Điểm 4"];
+    var csvRows = [];
+    csvRows.push(headers.join(","));
+    
+    grades.forEach(function(g) {
+      var row = [
+        g.course_code || "",
+        '"' + (g.course_name || "") + '"',
+        g.credits || "",
+        g.attendance_score || "",
+        g.midterm_score || "",
+        g.final_score || "",
+        g.average_score || "",
+        g.letter_grade || "",
+        g.gpa_score || ""
+      ];
+      csvRows.push(row.join(","));
+    });
+    
+    if (summary) {
+      csvRows.push("");
+      csvRows.push(',"Tổng kết học kỳ",'+(summary.totalCredits||"")+',,,,"GPA",'+(summary.semesterGPA||""));
+    }
+    
+    // Add UTF-8 BOM for Excel
+    var csvString = "\uFEFF" + csvRows.join("\n");
+    var blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    
+    var link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "BangDiem_" + selectedSemester.replace(/\s/g, "_") + ".csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 
   return (
     <div className="dashboard-content">
@@ -133,25 +190,50 @@ export default function GradesPage() {
 
         {/* Semester Selector */}
         <div className="grades-controls">
-          <div className="semester-select-wrapper">
-            <select
-              className="semester-select"
-              value={selectedSemester}
-              onChange={function (e) { setSelectedSemester(e.target.value) }}
-              disabled={overviewLoading || semesters.length === 0}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--muted-foreground)' }}>Lọc theo:</span>
+            
+            <div className="semester-select-wrapper">
+              <select
+                className="semester-select"
+                value={selectedYear}
+                onChange={function(e) { setSelectedYear(e.target.value) }}
+                disabled={overviewLoading || availableYears.length === 0}
+              >
+                {availableYears.length === 0 && <option value="">Chưa có dữ liệu</option>}
+                {availableYears.map(function(y) {
+                  return <option key={y} value={y}>Năm học {y}</option>
+                })}
+              </select>
+              <ChevronDown className="semester-select-icon" />
+            </div>
+
+            <div className="semester-select-wrapper">
+              <select
+                className="semester-select"
+                value={selectedTerm}
+                onChange={function(e) { setSelectedTerm(e.target.value) }}
+                disabled={overviewLoading || availableTerms.length === 0}
+              >
+                {availableTerms.length === 0 && <option value="">Chưa có dữ liệu</option>}
+                {availableTerms.map(function(t) {
+                  return <option key={t} value={t}>Học kỳ {t}</option>
+                })}
+              </select>
+              <ChevronDown className="semester-select-icon" />
+            </div>
+
+            <button 
+              className="btn btn-primary" 
+              onClick={function() { refetchSemester() }}
+              disabled={semLoading}
+              style={{ padding: "0 1.5rem", height: "42px", borderRadius: "8px", fontWeight: "500" }}
             >
-              {semesters.length === 0 && (
-                <option value="">Chưa có học kỳ nào</option>
-              )}
-              {semesters.map(function (sem) {
-                return (
-                  <option key={sem} value={sem}>{sem}</option>
-                )
-              })}
-            </select>
-            <ChevronDown className="semester-select-icon" />
+              Xem điểm
+            </button>
           </div>
-          <button className="btn btn-outline btn-sm">
+          
+          <button className="btn btn-outline btn-sm" onClick={handleExport} disabled={grades.length === 0}>
             <Download size={16} /> Xuất bảng điểm
           </button>
         </div>

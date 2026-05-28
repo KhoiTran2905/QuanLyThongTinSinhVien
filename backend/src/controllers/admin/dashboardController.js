@@ -4,6 +4,28 @@ const ApiResponse = require('../../utils/apiResponse');
 
 // @desc    Get dashboard statistics
 // @route   GET /api/admin/dashboard/stats
+
+// @desc    Get online users count (student, teacher)
+// @route   GET /api/admin/dashboard/online-users
+const getOnlineUsersCount = async (req, res) => {
+  try {
+    const onlineStudents = await queryOne(
+      "SELECT COUNT(*) as count FROM users WHERE role = 'student' AND last_login >= DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND is_active = true"
+    );
+    const onlineInstructors = await queryOne(
+      "SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND last_login >= DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND is_active = true"
+    );
+
+    return ApiResponse.success(res, {
+      students: onlineStudents.count || 0,
+      teachers: onlineInstructors.count || 0
+    });
+  } catch (error) {
+    console.error('Online users error:', error);
+    return ApiResponse.error(res, 'Lỗi khi lấy số lượng người dùng online');
+  }
+};
+
 const getStats = async (req, res) => {
   try {
     // Total students
@@ -151,5 +173,6 @@ module.exports = {
   getRecentStudents,
   getEvents,
   getDistribution,
-  getPendingRequests
+  getPendingRequests,
+  getOnlineUsersCount
 };

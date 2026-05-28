@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Header } from "@/components/dashboard/header"
 import { useApi, useMutation } from "@/hooks/use-api"
 import { profileService } from "@/lib/services/studentService"
@@ -139,6 +139,25 @@ export default function ProfilePage() {
     [],
     { defaultData: null }
   )
+
+  const fileInputRef = useRef(null)
+
+  const { mutate: updateAvatar, loading: updatingAvatar } = useMutation(
+    profileService.updateAvatar,
+    {
+      onSuccess: function () { showSuccess("Cập nhật ảnh đại diện thành công") },
+      onError: function (err) { showError(err.message) },
+    }
+  )
+
+  function handleAvatarChange(e) {
+    var file = e.target.files[0]
+    if (!file) return
+    var formData = new FormData()
+    formData.append('avatar', file)
+    updateAvatar(formData)
+    e.target.value = "" // reset input
+  }
 
   function showSuccess(msg) {
     setSuccessMsg(msg)
@@ -284,10 +303,20 @@ export default function ProfilePage() {
           <div className="profile-header-content">
             <div className="profile-avatar-section">
               <div className="profile-avatar-wrapper">
-                <div className="profile-avatar-large">{avatarChar}</div>
-                <button className="profile-avatar-edit" title="Đổi ảnh đại diện">
+                {student.avatar ? (
+                  <img src={student.avatar} alt="Avatar" className="profile-avatar-large" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                ) : (
+                  <div className="profile-avatar-large">{avatarChar}</div>
+                )}
+                <button 
+                  className="profile-avatar-edit" 
+                  title="Đổi ảnh đại diện" 
+                  onClick={function() { fileInputRef.current && fileInputRef.current.click() }}
+                  disabled={updatingAvatar}
+                >
                   <Camera size={16} />
                 </button>
+                <input type="file" accept="image/*" hidden ref={fileInputRef} onChange={handleAvatarChange} />
               </div>
               <div className="profile-basic-info">
                 <h1 className="profile-name">{student.full_name}</h1>
@@ -323,12 +352,6 @@ export default function ProfilePage() {
           <div className="card">
             <div className="card-header">
               <h2 className="card-title"><User /> Thông tin cá nhân</h2>
-              <button
-                className="btn btn-outline btn-sm"
-                onClick={function () { setEditSection("personal") }}
-              >
-                <Edit size={14} /> Chỉnh sửa
-              </button>
             </div>
             <div className="card-content">
               <div className="info-grid">

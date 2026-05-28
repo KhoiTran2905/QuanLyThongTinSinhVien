@@ -5,19 +5,31 @@ import { useState } from "react"
 import { Header } from "@/components/dashboard/header"
 import { SimpleBarChart, DonutChart, HorizontalBarChart } from "@/components/dashboard/charts"
 import { useApi, usePaginatedApi, useMutation } from "@/hooks/use-api"
-import { instructorService } from "@/lib/services/adminService"
+import { instructorService, adminDepartmentService } from "@/lib/services/adminService"
+import { exportToCSV } from "@/lib/utils/exportUtils"
 import {
   GraduationCap, Search, Plus, Download,
   Eye, Edit, Trash2, TrendingUp, Users,
-  BookOpen, Award, Building, Clock
+  BookOpen, Award, Building, Clock, ChevronLeft, ChevronRight
 } from "lucide-react"
 
 export default function TeachersPage() {
   const [searchInput, setSearchInput] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("all")
+  const [degreeFilter, setDegreeFilter] = useState("all")
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [deleteErrorPopup, setDeleteErrorPopup] = useState(null)
   const [successMsg, setSuccessMsg] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
+  
+  const [showModal, setShowModal] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [formData, setFormData] = useState({
+    instructor_code: "", full_name: "", email: "", phone: "",
+    degree: "Thạc sĩ", department_id: "", status: "Đang dạy"
+  })
+
+  const { data: departments } = useApi(adminDepartmentService.getAll, [], { defaultData: [] })
 
   const {
     data: teachers,
@@ -35,11 +47,25 @@ export default function TeachersPage() {
     { defaultData: {} }
   )
 
-  const { data: topRated, loading: topLoading } = useApi(
-    instructorService.getTopRated,
-    [],
-    { defaultData: [] }
-  )
+  const { mutate: createInstructor, loading: creating } = useMutation(instructorService.create, {
+    onSuccess: () => {
+      setSuccessMsg("Thêm giảng viên thành công")
+      setShowModal(false)
+      refetch()
+      setTimeout(() => setSuccessMsg(""), 3000)
+    },
+    onError: (err) => { setErrorMsg(err.message); setTimeout(() => setErrorMsg(""), 3000) }
+  })
+
+  const { mutate: updateInstructor, loading: updating } = useMutation(instructorService.update, {
+    onSuccess: () => {
+      setSuccessMsg("Cập nhật giảng viên thành công")
+      setShowModal(false)
+      refetch()
+      setTimeout(() => setSuccessMsg(""), 3000)
+    },
+    onError: (err) => { setErrorMsg(err.message); setTimeout(() => setErrorMsg(""), 3000) }
+  })
 
   const { mutate: deleteInstructor, loading: deleting } = useMutation(
     instructorService.delete,
@@ -51,9 +77,8 @@ export default function TeachersPage() {
         setTimeout(function () { setSuccessMsg("") }, 3000)
       },
       onError: function (err) {
-        setErrorMsg(err.message || "Lỗi khi xóa giảng viên")
+        setDeleteErrorPopup(err.message || "Lỗi khi xóa giảng viên")
         setConfirmDelete(null)
-        setTimeout(function () { setErrorMsg("") }, 3000)
       },
     }
   )
@@ -67,6 +92,43 @@ export default function TeachersPage() {
     var val = e.target.value
     setDepartmentFilter(val)
     updateParams({ department_id: val === "all" ? undefined : val })
+  }
+
+  const openCreate = () => {
+    setEditingId(null)
+    setFormData({
+      instructor_code: "", full_name: "", email: "", phone: "",
+      degree: "Thạc sĩ", department_id: "", status: "Đang dạy"
+    })
+    setShowModal(true)
+  }
+
+  const openEdit = (t) => {
+    setEditingId(t.id)
+    setFormData({
+      instructor_code: t.instructor_code, full_name: t.full_name, email: t.email, phone: t.phone || "",
+      degree: t.degree || "Thạc sĩ", department_id: t.department_id || "", status: t.status
+    })
+    setShowModal(true)
+  }
+
+  const handleExport = () => {
+    if (teacherList.length === 0) return alert("Không có dữ liệu để xuất")
+    const exportData = teacherList.map(t => ({
+      "Mã GV": t.instructor_code,
+      "Họ và tên": t.full_name,
+      "Email": t.email,
+      "Khoa": t.department_name || "",
+      "Học vị": t.degree || "",
+      "Trạng thái": t.status
+    }))
+    exportToCSV(exportData, "Danh_sach_giang_vien.csv")
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (editingId) updateInstructor(editingId, formData)
+    else createInstructor(formData)
   }
 
   var teacherList = Array.isArray(teachers) ? teachers : []
@@ -85,8 +147,6 @@ export default function TeachersPage() {
         return { name: d.department_name, teachers: d.count }
       })
     : []
-
-  var topRatedList = Array.isArray(topRated) ? topRated : []
 
   return (
     <div className="dashboard-content">
@@ -220,38 +280,6 @@ export default function TeachersPage() {
           </div>
         </div>
 
-        {/* Top Rated */}
-        {topRatedList.length > 0 && (
-          <div className="chart-card" style={{ marginTop: "24px" }}>
-            <div className="chart-card-header">
-              <h3 className="chart-card-title">
-                <Award /> Top giảng viên được đánh giá cao
-              </h3>
-            </div>
-            <div className="chart-card-body">
-              <div className="ranking-list">
-                {topRatedList.map(function (teacher, index) {
-                  var posClass = index === 0 ? "gold" : index === 1 ? "silver" : index === 2 ? "bronze" : "normal"
-                  return (
-                    <div key={teacher.id || index} className="ranking-item">
-                      <div className={"ranking-position " + posClass}>{index + 1}</div>
-                      <div className="ranking-info">
-                        <div className="ranking-name">{teacher.full_name}</div>
-                        <div className="ranking-meta">
-                          {teacher.department_name} | {teacher.total_students || 0} SV
-                        </div>
-                      </div>
-                      <div className="ranking-value" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                        <Award size={16} style={{ color: "#f59e0b" }} />
-                        {teacher.rating}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Filters */}
         <div className="card" style={{ marginTop: "24px" }}>
@@ -277,18 +305,33 @@ export default function TeachersPage() {
                   onChange={handleDeptChange}
                 >
                   <option value="all">Tất cả khoa</option>
-                  {deptData.map(function (d, i) {
+                  {departments.map(function (d) {
                     return (
-                      <option key={i} value={d.name}>{d.name}</option>
+                      <option key={d.id} value={d.id}>{d.name}</option>
                     )
                   })}
                 </select>
+                <select
+                  className="filter-select"
+                  value={degreeFilter}
+                  onChange={function(e) {
+                    var val = e.target.value;
+                    setDegreeFilter(val);
+                    updateParams({ degree: val === "all" ? undefined : val });
+                  }}
+                >
+                  <option value="all">Tất cả học vị</option>
+                  <option value="Cử nhân">Cử nhân</option>
+                  <option value="Thạc sĩ">Thạc sĩ</option>
+                  <option value="Tiến sĩ">Tiến sĩ</option>
+                  <option value="GS/PGS">GS/PGS</option>
+                </select>
               </div>
               <div className="admin-toolbar-right">
-                <button className="btn btn-outline btn-sm">
+                <button className="btn btn-outline btn-sm" onClick={handleExport}>
                   <Download /> Xuất
                 </button>
-                <button className="btn btn-primary btn-sm">
+                <button className="btn btn-primary btn-sm" onClick={openCreate}>
                   <Plus /> Thêm giảng viên
                 </button>
               </div>
@@ -324,7 +367,6 @@ export default function TeachersPage() {
                     <th>Khoa</th>
                     <th>Học vị</th>
                     <th>Trạng thái</th>
-                    <th className="text-center">Đánh giá</th>
                     <th style={{ width: "120px" }}>Thao tác</th>
                   </tr>
                 </thead>
@@ -373,17 +415,12 @@ export default function TeachersPage() {
                               {teacher.status}
                             </span>
                           </td>
-                          <td className="text-center">
-                            {teacher.rating > 0
-                              ? teacher.rating.toFixed(1)
-                              : "—"}
-                          </td>
                           <td>
                             <div className="action-buttons">
-                              <button className="btn btn-ghost btn-icon btn-sm">
+                              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(teacher)}>
                                 <Eye />
                               </button>
-                              <button className="btn btn-ghost btn-icon btn-sm">
+                              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(teacher)}>
                                 <Edit />
                               </button>
                               <button
@@ -466,6 +503,91 @@ export default function TeachersPage() {
                   {deleting ? "Đang xóa..." : "Xóa"}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Error Popup */}
+        {deleteErrorPopup && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110,
+          }}>
+            <div style={{
+              background: "var(--card)", borderRadius: "0.75rem", padding: "2rem",
+              maxWidth: "400px", width: "90%",
+            }}>
+              <h3 style={{ fontWeight: 700, marginBottom: "0.5rem", color: "#dc2626" }}>Không thể xóa</h3>
+              <p style={{ color: "var(--muted-foreground)", marginBottom: "1.5rem" }}>
+                {deleteErrorPopup}
+              </p>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={function () { setDeleteErrorPopup(null) }}
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Thêm/Sửa */}
+        {showModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+            <div style={{ background: "var(--card)", padding: "2rem", borderRadius: "0.75rem", width: 600, maxHeight: "90vh", overflowY: "auto" }}>
+              <h3 style={{ fontWeight: 700, marginBottom: 16 }}>{editingId ? "Cập nhật giảng viên" : "Thêm giảng viên mới"}</h3>
+              <form onSubmit={handleSubmit}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Mã GV *</label>
+                    <input className="form-input" required value={formData.instructor_code} onChange={e => setFormData({...formData, instructor_code: e.target.value})} disabled={!!editingId} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Họ và tên *</label>
+                    <input className="form-input" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Email</label>
+                    <input type="email" className="form-input" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Số điện thoại</label>
+                    <input type="tel" className="form-input" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Khoa</label>
+                    <select className="form-input" value={formData.department_id} onChange={e => setFormData({...formData, department_id: e.target.value})}>
+                      <option value="">-- Chọn Khoa --</option>
+                      {(departments || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Học vị</label>
+                    <select className="form-input" value={formData.degree} onChange={e => setFormData({...formData, degree: e.target.value})}>
+                      <option value="Cử nhân">Cử nhân</option>
+                      <option value="Thạc sĩ">Thạc sĩ</option>
+                      <option value="Tiến sĩ">Tiến sĩ</option>
+                      <option value="PGS.TS">PGS.TS</option>
+                      <option value="GS.TS">GS.TS</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Trạng thái</label>
+                    <select className="form-input" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                      <option value="Đang dạy">Đang dạy</option>
+                      <option value="Nghỉ phép">Nghỉ phép</option>
+                      <option value="Đã nghỉ việc">Đã nghỉ việc</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 24 }}>
+                  <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Hủy</button>
+                  <button type="submit" className="btn btn-primary" disabled={creating || updating}>Lưu thông tin</button>
+                </div>
+              </form>
             </div>
           </div>
         )}

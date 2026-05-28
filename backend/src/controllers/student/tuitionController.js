@@ -216,7 +216,51 @@ const getReceipt = async (req, res) => {
   }
 };
 
+// @desc    Get tuition details for a specific semester
+// @route   GET /api/student/tuition/semester/:semesterCode
+const getTuitionDetailsBySemester = async (req, res) => {
+  try {
+    const { semesterCode } = req.params;
+    const studentId = await getStudentId(req.user.id);
+    if (!studentId) {
+      return ApiResponse.notFound(res, 'Không tìm thấy thông tin sinh viên');
+    }
+
+    // Get tuition summary
+    const tuition = await queryOne(
+      'SELECT * FROM tuitions WHERE student_id = ? AND semester = ?',
+      [studentId, semesterCode]
+    );
+
+    if (!tuition) {
+       return ApiResponse.success(res, { tuition: null, courses: [] });
+    }
+
+    // Get courses from grades
+    const courses = await query(
+      `SELECT c.course_code, c.name as course_name, c.credits, 
+              (c.credits * ?) as amount, 
+              0 as discount, 
+              (c.credits * ?) as final_amount
+       FROM grades g
+       JOIN courses c ON g.course_id = c.id
+       WHERE g.student_id = ? AND g.semester = ?`,
+      [tuition.credit_fee, tuition.credit_fee, studentId, semesterCode]
+    );
+
+    return ApiResponse.success(res, {
+      tuition: tuition,
+      courses: courses
+    });
+
+  } catch (error) {
+    console.error('Tuition details error:', error);
+    return ApiResponse.error(res, 'Lỗi khi lấy chi tiết học phí');
+  }
+};
+
 module.exports = {
+  getTuitionDetailsBySemester,
   getCurrentTuition,
   getTuitionHistory,
   getPaymentMethods,

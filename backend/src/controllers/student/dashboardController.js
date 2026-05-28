@@ -109,7 +109,7 @@ const getDashboardNotifications = async (req, res) => {
               CASE WHEN nr.id IS NOT NULL THEN 1 ELSE 0 END as is_read
        FROM notifications n
        LEFT JOIN notification_reads nr ON nr.notification_id = n.id AND nr.user_id = ?
-       WHERE n.target_role IN ('all', 'student')
+       WHERE n.target_role IN ('all', 'student') AND (nr.is_deleted IS NULL OR nr.is_deleted = 0)
        ORDER BY n.created_at DESC
        LIMIT 3`,
       [req.user.id]

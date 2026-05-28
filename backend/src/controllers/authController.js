@@ -5,19 +5,19 @@ const { query, queryOne, insert } = require('../config/database');
 const ApiResponse = require('../utils/apiResponse');
 
 // Generate tokens
-const generateAccessToken = (user) => {
+const generateAccessToken = (user, rememberMe) => {
   return jwt.sign(
     { id: user.id, username: user.username, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    { expiresIn: rememberMe ? '30d' : '1d' }
   );
 };
 
-const generateRefreshToken = (user) => {
+const generateRefreshToken = (user, rememberMe) => {
   return jwt.sign(
     { id: user.id },
     process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d' }
+    { expiresIn: rememberMe ? '60d' : '7d' }
   );
 };
 
@@ -26,7 +26,7 @@ const generateRefreshToken = (user) => {
 // @access  Public
 const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, rememberMe } = req.body;
 
     // Find user
     const user = await queryOne(
@@ -50,8 +50,8 @@ const login = async (req, res) => {
     }
 
     // Generate tokens
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+    const accessToken = generateAccessToken(user, rememberMe);
+    const refreshToken = generateRefreshToken(user, rememberMe);
 
     // Save refresh token to database
     await insert(

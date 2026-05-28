@@ -39,42 +39,6 @@ export var profileService = {
   },
 };
 
-// ===== Registration =====
-export var registrationService = {
-  getInfo: function () {
-    return apiClient.get('/student/registration/info');
-  },
-  getAvailable: function (params) {
-    return apiClient.get('/student/registration/available', params || {});
-  },
-  getRegistered: function () {
-    return apiClient.get('/student/registration/registered');
-  },
-  register: function (courseId) {
-    return apiClient.post('/student/registration/register', {
-      course_id: courseId,
-    });
-  },
-  cancel: function (courseId) {
-    return apiClient.delete('/student/registration/' + courseId);
-  },
-  confirm: function () {
-    return apiClient.post('/student/registration/confirm');
-  },
-};
-
-// ===== Schedule =====
-export var scheduleService = {
-  getSchedule: function (params) {
-    return apiClient.get('/student/schedule', params || {});
-  },
-  getByWeek: function (year, weekNum) {
-    return apiClient.get('/student/schedule/week/' + year + '/' + weekNum);
-  },
-  getStats: function () {
-    return apiClient.get('/student/schedule/stats');
-  },
-};
 
 // ===== Grades =====
 export var gradeService = {
@@ -101,6 +65,9 @@ export var tuitionService = {
   },
   getHistory: function () {
     return apiClient.get('/student/tuition/history');
+  },
+  getDetailsBySemester: function (semesterCode) {
+    return apiClient.get('/student/tuition/semester/' + encodeURIComponent(semesterCode));
   },
   getPaymentMethods: function () {
     return apiClient.get('/student/tuition/payment-methods');

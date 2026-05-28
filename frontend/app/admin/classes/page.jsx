@@ -5,9 +5,10 @@ import { useState } from "react"
 import { Header } from "@/components/dashboard/header"
 import { SimpleBarChart, DonutChart } from "@/components/dashboard/charts"
 import { useApi, usePaginatedApi, useMutation } from "@/hooks/use-api"
-import { classService } from "@/lib/services/adminService"
+import { classService, adminMajorService, adminDepartmentService, instructorService, cohortService } from "@/lib/services/adminService"
+import { exportToCSV } from "@/lib/utils/exportUtils"
 import {
-  ClipboardList, Search, Plus, Eye, Edit, Trash2,
+  ClipboardList, Search, Plus, Eye, Edit, Trash2, Download,
   Users, BookOpen, Calendar, TrendingUp, Award,
   Building, GraduationCap, ChevronLeft, ChevronRight
 } from "lucide-react"
@@ -15,9 +16,27 @@ import {
 export default function ClassesPage() {
   const [searchInput, setSearchInput] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [departmentFilter, setDepartmentFilter] = useState("all")
+  const [academicYearFilter, setAcademicYearFilter] = useState("all")
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [deleteErrorPopup, setDeleteErrorPopup] = useState(null)
   const [successMsg, setSuccessMsg] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
+
+  const [showModal, setShowModal] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [formData, setFormData] = useState({
+    class_code: "", name: "", department_id: "", major_id: "", advisor_id: "", academic_year: "", status: "Đang học"
+  })
+
+  const { data: majors } = useApi(adminMajorService.getAll, [], { defaultData: [] })
+  const { data: departments } = useApi(adminDepartmentService.getAll, [], { defaultData: [] })
+  // For instructors dropdown, we might get paginated data, so we check if it's an array or object
+  const { data: instructorsData } = useApi(instructorService.getAll, [{ limit: 100 }], { defaultData: [] })
+  const instructors = Array.isArray(instructorsData) ? instructorsData : (instructorsData?.data || [])
+
+  const { data: cohortsData } = useApi(cohortService.getAll, [{ limit: 100 }], { defaultData: [] })
+  const cohorts = Array.isArray(cohortsData) ? cohortsData : (cohortsData?.data || [])
 
   const {
     data: classes,
@@ -33,6 +52,26 @@ export default function ClassesPage() {
     classService.getStats, [], { defaultData: {} }
   )
 
+  const { mutate: createClass, loading: creating } = useMutation(classService.create, {
+    onSuccess: () => {
+      setSuccessMsg("Thêm lớp học thành công")
+      setShowModal(false)
+      refetch()
+      setTimeout(() => setSuccessMsg(""), 3000)
+    },
+    onError: (err) => { setErrorMsg(err.message); setTimeout(() => setErrorMsg(""), 3000) }
+  })
+
+  const { mutate: updateClass, loading: updating } = useMutation(classService.update, {
+    onSuccess: () => {
+      setSuccessMsg("Cập nhật lớp học thành công")
+      setShowModal(false)
+      refetch()
+      setTimeout(() => setSuccessMsg(""), 3000)
+    },
+    onError: (err) => { setErrorMsg(err.message); setTimeout(() => setErrorMsg(""), 3000) }
+  })
+
   const { mutate: deleteClass, loading: deleting } = useMutation(
     classService.delete,
     {
@@ -43,9 +82,8 @@ export default function ClassesPage() {
         setTimeout(function () { setSuccessMsg("") }, 3000)
       },
       onError: function (err) {
-        setErrorMsg(err.message || "Lỗi khi xóa lớp học")
+        setDeleteErrorPopup(err.message || "Lỗi khi xóa lớp học")
         setConfirmDelete(null)
-        setTimeout(function () { setErrorMsg("") }, 3000)
       },
     }
   )
@@ -53,6 +91,43 @@ export default function ClassesPage() {
   function handleSearch(e) {
     e.preventDefault()
     updateParams({ search: searchInput })
+  }
+
+  const openCreate = () => {
+    setEditingId(null)
+    setFormData({
+      class_code: "", name: "", department_id: "", major_id: "", advisor_id: "", academic_year: "", status: "Đang học"
+    })
+    setShowModal(true)
+  }
+
+  const openEdit = (c) => {
+    setEditingId(c.id)
+    setFormData({
+      class_code: c.class_code, name: c.name, department_id: c.department_id || "", major_id: c.major_id || "", 
+      advisor_id: c.advisor_id || "", academic_year: c.academic_year || "", status: c.status
+    })
+    setShowModal(true)
+  }
+
+  const handleExport = () => {
+    if (classList.length === 0) return alert("Không có dữ liệu để xuất")
+    const exportData = classList.map(c => ({
+      "Mã lớp": c.class_code,
+      "Tên lớp": c.name,
+      "Ngành": c.major_name || "",
+      "Khóa": c.academic_year || "",
+      "Sĩ số": c.total_students || 0,
+      "Trạng thái": c.status,
+      "CVHT": c.advisor_name || ""
+    }))
+    exportToCSV(exportData, "Danh_sach_lop_hoc.csv")
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (editingId) updateClass(editingId, formData)
+    else createClass(formData)
   }
 
   var classList = Array.isArray(classes) ? classes : []
@@ -169,60 +244,6 @@ export default function ClassesPage() {
             </div>
           </div>
 
-          <div className="chart-card">
-            <div className="chart-card-header">
-              <h3 className="chart-card-title">
-                <GraduationCap /> Top lớp xuất sắc
-              </h3>
-            </div>
-            <div className="chart-card-body">
-              {statsLoading ? (
-                <div style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "2rem" }}>
-                  Đang tải...
-                </div>
-              ) : (
-                <div className="ranking-list">
-                  {topClasses.map(function (cls, index) {
-                    var posClass = index === 0 ? "gold"
-                      : index === 1 ? "silver"
-                      : index === 2 ? "bronze"
-                      : "normal"
-                    var gpa = parseFloat(cls.avg_gpa) || 0
-                    var gpaColor = gpa >= 3.5 ? "#16a34a"
-                      : gpa >= 3.0 ? "#2563eb"
-                      : "#f59e0b"
-
-                    return (
-                      <div key={cls.id || index} className="ranking-item">
-                        <div className={"ranking-position " + posClass}>
-                          {index + 1}
-                        </div>
-                        <div className="ranking-info">
-                          <div className="ranking-name">{cls.class_code}</div>
-                          <div className="ranking-meta">
-                            {cls.major_name} | {cls.total_students || 0} SV
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div className="ranking-value" style={{ color: gpaColor }}>
-                            {gpa.toFixed(2)}
-                          </div>
-                          <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                            GPA
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {topClasses.length === 0 && (
-                    <p style={{ color: "var(--muted-foreground)", textAlign: "center" }}>
-                      Chưa có dữ liệu
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* Filters */}
@@ -247,10 +268,38 @@ export default function ClassesPage() {
                 </form>
                 <select
                   className="filter-select"
+                  value={academicYearFilter}
+                  onChange={function (e) {
+                    setAcademicYearFilter(e.target.value)
+                    updateParams({ academic_year: e.target.value === "all" ? undefined : e.target.value })
+                  }}
+                >
+                  <option value="all">Tất cả khóa</option>
+                  {cohorts.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  className="filter-select"
+                  value={departmentFilter}
+                  onChange={function (e) {
+                    setDepartmentFilter(e.target.value)
+                    updateParams({ department_id: e.target.value === "all" ? undefined : e.target.value })
+                  }}
+                >
+                  <option value="all">Tất cả khoa</option>
+                  {(departments || []).map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  className="filter-select"
                   value={statusFilter}
                   onChange={function (e) {
                     setStatusFilter(e.target.value)
-                    updateParams({ status: e.target.value })
+                    updateParams({ status: e.target.value === "all" ? undefined : e.target.value })
                   }}
                 >
                   <option value="all">Tất cả trạng thái</option>
@@ -258,8 +307,11 @@ export default function ClassesPage() {
                   <option value="Đã tốt nghiệp">Đã tốt nghiệp</option>
                 </select>
               </div>
-              <div className="admin-toolbar-right">
-                <button className="btn btn-primary btn-sm">
+              <div className="admin-toolbar-right" style={{ display: "flex", gap: "0.5rem" }}>
+                <button className="btn btn-outline btn-sm" onClick={handleExport}>
+                  <Download size={16} /> Xuất CSV
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={openCreate}>
                   <Plus /> Thêm lớp
                 </button>
               </div>
@@ -420,10 +472,10 @@ export default function ClassesPage() {
 
                       {/* Actions */}
                       <div style={{ display: "flex", gap: "8px" }}>
-                        <button className="btn btn-outline btn-sm" style={{ flex: 1 }}>
+                        <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => openEdit(cls)}>
                           <Eye size={14} /> Chi tiết
                         </button>
-                        <button className="btn btn-outline btn-sm" style={{ flex: 1 }}>
+                        <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => openEdit(cls)}>
                           <Edit size={14} /> Sửa
                         </button>
                         <button
@@ -503,6 +555,93 @@ export default function ClassesPage() {
                   {deleting ? "Đang xóa..." : "Xóa"}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Error Popup */}
+        {deleteErrorPopup && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110,
+          }}>
+            <div style={{
+              background: "var(--card)", borderRadius: "0.75rem", padding: "2rem",
+              maxWidth: "400px", width: "90%",
+            }}>
+              <h3 style={{ fontWeight: 700, marginBottom: "0.5rem", color: "#dc2626" }}>Không thể xóa</h3>
+              <p style={{ color: "var(--muted-foreground)", marginBottom: "1.5rem" }}>
+                {deleteErrorPopup}
+              </p>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={function () { setDeleteErrorPopup(null) }}
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Thêm/Sửa */}
+        {showModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+            <div style={{ background: "var(--card)", padding: "2rem", borderRadius: "0.75rem", width: 600, maxHeight: "90vh", overflowY: "auto" }}>
+              <h3 style={{ fontWeight: 700, marginBottom: 16 }}>{editingId ? "Cập nhật lớp học" : "Thêm lớp học mới"}</h3>
+              <form onSubmit={handleSubmit}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Mã lớp *</label>
+                    <input className="form-input" required value={formData.class_code} onChange={e => setFormData({...formData, class_code: e.target.value})} disabled={!!editingId} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Tên lớp *</label>
+                    <input className="form-input" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Khóa (Năm học)</label>
+                    <select className="form-input" value={formData.academic_year} onChange={e => setFormData({...formData, academic_year: e.target.value})}>
+                      <option value="">-- Chọn Khóa --</option>
+                      {cohorts.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Trạng thái</label>
+                    <select className="form-input" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                      <option value="Đang học">Đang học</option>
+                      <option value="Đã tốt nghiệp">Đã tốt nghiệp</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Khoa</label>
+                    <select className="form-input" value={formData.department_id} onChange={e => setFormData({...formData, department_id: e.target.value})}>
+                      <option value="">-- Chọn Khoa --</option>
+                      {(departments || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Ngành học</label>
+                    <select className="form-input" value={formData.major_id} onChange={e => setFormData({...formData, major_id: e.target.value})}>
+                      <option value="">-- Chọn Ngành học --</option>
+                      {(majors || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={{ display: "block", marginBottom: 4, fontSize: 14 }}>Cố vấn học tập</label>
+                    <select className="form-input" value={formData.advisor_id} onChange={e => setFormData({...formData, advisor_id: e.target.value})}>
+                      <option value="">-- Chọn Giảng viên --</option>
+                      {instructors.map(i => <option key={i.id} value={i.id}>{i.full_name} ({i.instructor_code})</option>)}
+                    </select>
+                  </div>
+                </div>
+                
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 24 }}>
+                  <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Hủy</button>
+                  <button type="submit" className="btn btn-primary" disabled={creating || updating}>Lưu thông tin</button>
+                </div>
+              </form>
             </div>
           </div>
         )}

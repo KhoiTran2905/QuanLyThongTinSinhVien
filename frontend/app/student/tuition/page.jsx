@@ -1,14 +1,13 @@
-
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Header } from "@/components/dashboard/header"
 import { useApi, useMutation } from "@/hooks/use-api"
 import { tuitionService } from "@/lib/services/studentService"
 import {
   CreditCard, Download, CheckCircle,
   Clock, AlertCircle, FileText,
-  Calendar, Printer, Wallet
+  Calendar, Printer, Wallet, ChevronDown
 } from "lucide-react"
 
 function formatCurrency(amount) {
@@ -21,45 +20,34 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString("vi-VN")
 }
 
-function StatusBadge(props) {
-  var status = props.status
-  if (status === "Đã thanh toán") {
-    return (
-      <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-        <CheckCircle size={12} /> Đã thanh toán
-      </span>
-    )
-  }
-  if (status === "Thanh toán một phần") {
-    return (
-      <span className="badge badge-warning" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-        <Clock size={12} /> Thanh toán một phần
-      </span>
-    )
-  }
-  return (
-    <span className="badge badge-danger" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-      <AlertCircle size={12} /> Chưa thanh toán
-    </span>
-  )
-}
-
 export default function TuitionPage() {
+  const [selectedSemester, setSelectedSemester] = useState("ALL")
   const [selectedMethod, setSelectedMethod] = useState("bank_transfer")
   const [successMsg, setSuccessMsg] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
 
-  const { data: currentTuition, loading: currentLoading, refetch } = useApi(
-    tuitionService.getCurrent,
-    [],
-    { defaultData: null }
-  )
-
-  const { data: history, loading: historyLoading } = useApi(
+  // Fetch tuition history (used for 'All' view and populating the dropdown)
+  const { data: history, loading: historyLoading, refetch: refetchHistory } = useApi(
     tuitionService.getHistory,
     [],
     { defaultData: [] }
   )
+
+  // Fetch details for specific semester
+  const { data: detailsData, loading: detailsLoading, refetch: refetchDetails } = useApi(
+    function () {
+      if (selectedSemester === "ALL") return Promise.resolve({ data: { tuition: null, courses: [] } })
+      return tuitionService.getDetailsBySemester(selectedSemester)
+    },
+    [],
+    { defaultData: { tuition: null, courses: [] } }
+  )
+
+  useEffect(function () {
+    if (selectedSemester !== "ALL") {
+      refetchDetails()
+    }
+  }, [selectedSemester])
 
   const { data: paymentMethods, loading: methodsLoading } = useApi(
     tuitionService.getPaymentMethods,
@@ -78,7 +66,8 @@ export default function TuitionPage() {
     {
       onSuccess: function () {
         setSuccessMsg("Thanh toán thành công!")
-        refetch()
+        refetchHistory()
+        if (selectedSemester !== "ALL") refetchDetails()
         setTimeout(function () { setSuccessMsg("") }, 3000)
       },
       onError: function (err) {
@@ -89,24 +78,36 @@ export default function TuitionPage() {
   )
 
   var historyList = Array.isArray(history) ? history : []
+  var semesters = historyList.map(function (h) { return h.semester })
+  
   var methodsList = Array.isArray(paymentMethods) ? paymentMethods : []
 
-  // Find current tuition id from history for payment
-  var currentTuitionId = null
-  if (historyList.length > 0 && currentTuition && currentTuition.semester) {
-    var found = historyList.find(function (h) {
-      return h.semester === currentTuition.semester
-    })
-    if (found) currentTuitionId = found.id
-  }
-
   function handlePay() {
-    if (!currentTuitionId) {
+    if (!detailsData || !detailsData.tuition || !detailsData.tuition.id) {
       setErrorMsg("Không tìm thấy thông tin học phí để thanh toán")
       return
     }
-    pay(currentTuitionId, selectedMethod)
+    pay(detailsData.tuition.id, selectedMethod)
   }
+
+  // Calculate totals for 'ALL' view
+  var totalAmountBeforeDiscountAll = 0
+  var totalDiscountAll = 0
+  var totalPayableAll = 0
+  var totalPaidAll = 0
+  var totalRemainingAll = 0
+
+  historyList.forEach(function (item) {
+    totalAmountBeforeDiscountAll += (Number(item.total_amount) + Number(item.discount))
+    totalDiscountAll += Number(item.discount)
+    totalPayableAll += Number(item.total_amount)
+    totalPaidAll += Number(item.paid_amount)
+    totalRemainingAll += Number(item.remaining)
+  })
+
+  // Specific semester data
+  var specificTuition = detailsData ? detailsData.tuition : null
+  var specificCourses = detailsData && detailsData.courses ? detailsData.courses : []
 
   return (
     <div className="dashboard-content">
@@ -119,6 +120,7 @@ export default function TuitionPage() {
             border: "1px solid #16a34a", borderRadius: "0.5rem",
             color: "#166534", fontSize: "0.875rem",
             display: "flex", alignItems: "center", gap: "0.5rem",
+            marginBottom: "1rem"
           }}>
             <CheckCircle size={16} /> {successMsg}
           </div>
@@ -128,251 +130,242 @@ export default function TuitionPage() {
             padding: "0.75rem 1rem", background: "#fee2e2",
             border: "1px solid #dc2626", borderRadius: "0.5rem",
             color: "#991b1b", fontSize: "0.875rem",
+            marginBottom: "1rem"
           }}>
             {errorMsg}
           </div>
         )}
 
-        {/* Current Tuition */}
-        {currentLoading ? (
-          <div className="card" style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
-            Đang tải thông tin học phí...
-          </div>
-        ) : currentTuition && currentTuition.semester ? (
-          <div className="tuition-summary-card">
-            <div className="tuition-summary-header">
-              <div>
-                <h2 className="tuition-semester-title">{currentTuition.semester}</h2>
-                <p className="tuition-due-date">
-                  Hạn nộp: {formatDate(currentTuition.deadline)}
-                </p>
-              </div>
-              <StatusBadge status={currentTuition.status} />
-            </div>
-
-            <div className="tuition-amounts">
-              <div className="tuition-amount-item">
-                <span className="tuition-amount-label">Tổng học phí</span>
-                <span className="tuition-amount-value">
-                  {formatCurrency(currentTuition.details && currentTuition.details.totalAmount)}
-                </span>
-              </div>
-              <div className="tuition-amount-item">
-                <span className="tuition-amount-label">Đã thanh toán</span>
-                <span className="tuition-amount-value success">
-                  {formatCurrency(currentTuition.details && currentTuition.details.paidAmount)}
-                </span>
-              </div>
-              <div className="tuition-amount-item">
-                <span className="tuition-amount-label">Còn nợ</span>
-                <span className="tuition-amount-value">
-                  {formatCurrency(currentTuition.details && currentTuition.details.remaining)}
-                </span>
-              </div>
-            </div>
-
-            {currentTuition.status === "Đã thanh toán" ? (
-              <div className="tuition-paid-info">
-                <CheckCircle />
-                <span>
-                  Đã thanh toán ngày {formatDate(currentTuition.payment && currentTuition.payment.date)}
-                  {currentTuition.payment && currentTuition.payment.method
-                    ? " — " + currentTuition.payment.method
-                    : ""}
-                </span>
-              </div>
-            ) : (
-              <button
-                className="btn btn-primary btn-lg"
-                style={{ width: "100%" }}
-                onClick={handlePay}
-                disabled={paying || !currentTuitionId}
+        {/* Filter Section */}
+        <div className="grades-controls" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--muted-foreground)' }}>Bộ lọc:</span>
+            
+            <div className="semester-select-wrapper">
+              <select
+                className="semester-select"
+                value={selectedSemester}
+                onChange={function(e) { setSelectedSemester(e.target.value) }}
+                disabled={historyLoading}
               >
-                <Wallet />
-                {paying ? "Đang xử lý..." : "Thanh toán ngay"}
-              </button>
-            )}
+                <option value="ALL">Tất cả các kỳ</option>
+                {semesters.map(function(sem) {
+                  return <option key={sem} value={sem}>{sem}</option>
+                })}
+              </select>
+              <ChevronDown className="semester-select-icon" />
+            </div>
+          </div>
+        </div>
+
+        {/* Content Section */}
+        {selectedSemester === "ALL" ? (
+          /* ================= ALL SEMESTERS VIEW ================= */
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title"><Calendar /> Tổng hợp học phí các kỳ</h2>
+            </div>
+            <div className="card-content">
+              {historyLoading ? (
+                <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+                  Đang tải...
+                </div>
+              ) : historyList.length === 0 ? (
+                <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+                  Chưa có dữ liệu học phí
+                </div>
+              ) : (
+                <div className="table-wrapper">
+                  <table className="table grades-table">
+                    <thead>
+                      <tr>
+                        <th className="text-center">STT</th>
+                        <th>Học kỳ năm học</th>
+                        <th className="text-right">HP chưa giảm</th>
+                        <th className="text-right">Miễn giảm</th>
+                        <th className="text-right">Phải thu</th>
+                        <th className="text-right">Đã thu</th>
+                        <th className="text-right">Còn nợ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyList.map(function (item, idx) {
+                        var amountBefore = Number(item.total_amount) + Number(item.discount)
+                        return (
+                          <tr key={item.id}>
+                            <td className="text-center">{idx + 1}</td>
+                            <td className="font-medium">{item.semester}</td>
+                            <td className="text-right">{formatCurrency(amountBefore)}</td>
+                            <td className="text-right text-success">{formatCurrency(item.discount)}</td>
+                            <td className="text-right font-semibold text-primary">{formatCurrency(item.total_amount)}</td>
+                            <td className="text-right">{formatCurrency(item.paid_amount)}</td>
+                            <td className="text-right font-semibold text-danger">{formatCurrency(item.remaining)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="grades-summary-row" style={{ background: 'var(--muted)', fontWeight: 'bold' }}>
+                        <td colSpan={2} className="text-right">Tổng toàn bộ:</td>
+                        <td className="text-right">{formatCurrency(totalAmountBeforeDiscountAll)}</td>
+                        <td className="text-right text-success">{formatCurrency(totalDiscountAll)}</td>
+                        <td className="text-right text-primary">{formatCurrency(totalPayableAll)}</td>
+                        <td className="text-right">{formatCurrency(totalPaidAll)}</td>
+                        <td className="text-right text-danger">{formatCurrency(totalRemainingAll)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
-          <div className="card" style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
-            Chưa có thông tin học phí
+          /* ================= SPECIFIC SEMESTER VIEW ================= */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title"><FileText /> Danh sách phải thu — {selectedSemester}</h2>
+              </div>
+              <div className="card-content">
+                {detailsLoading ? (
+                  <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+                    Đang tải chi tiết...
+                  </div>
+                ) : !specificTuition ? (
+                  <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted-foreground)" }}>
+                    Không tìm thấy dữ liệu cho học kỳ này
+                  </div>
+                ) : (
+                  <div>
+                    <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
+                      <table className="table grades-table">
+                        <thead>
+                          <tr>
+                            <th className="text-center">STT</th>
+                            <th>Tên môn học</th>
+                            <th className="text-center">Số tín chỉ</th>
+                            <th className="text-right">Số tiền</th>
+                            <th className="text-right">Miễn giảm</th>
+                            <th className="text-right">Phải thu</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {specificCourses.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="text-center text-muted" style={{ padding: '1rem' }}>
+                                Không có môn học nào hoặc chưa có điểm
+                              </td>
+                            </tr>
+                          ) : (
+                            specificCourses.map(function(course, idx) {
+                              return (
+                                <tr key={idx}>
+                                  <td className="text-center">{idx + 1}</td>
+                                  <td className="font-medium">{course.course_name}</td>
+                                  <td className="text-center">{course.credits}</td>
+                                  <td className="text-right">{formatCurrency(course.amount)}</td>
+                                  <td className="text-right">{formatCurrency(course.discount)}</td>
+                                  <td className="text-right font-semibold">{formatCurrency(course.final_amount)}</td>
+                                </tr>
+                              )
+                            })
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr className="grades-summary-row" style={{ background: 'var(--muted)' }}>
+                            <td colSpan={3} className="text-right font-semibold">Tổng môn học:</td>
+                            <td className="text-right font-semibold">{formatCurrency(Number(specificTuition.total_amount) + Number(specificTuition.discount))}</td>
+                            <td className="text-right font-semibold text-success">{formatCurrency(specificTuition.discount)}</td>
+                            <td className="text-right font-bold text-primary">{formatCurrency(specificTuition.total_amount)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '1.125rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '1rem 2rem', textAlign: 'right' }}>
+                        <span className="font-semibold">Đã thu:</span>
+                        <span className="font-bold text-success">{formatCurrency(specificTuition.paid_amount)}</span>
+                        
+                        <span className="font-semibold">Còn nợ:</span>
+                        <span className="font-bold text-danger">{formatCurrency(specificTuition.remaining)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Payment Section (only show if remaining > 0) */}
+            {specificTuition && Number(specificTuition.remaining) > 0 && (
+              <div className="card" style={{ border: '2px solid var(--primary)', overflow: 'hidden' }}>
+                <div className="card-header" style={{ background: 'rgba(185, 28, 28, 0.05)' }}>
+                  <h2 className="card-title text-primary"><Wallet /> Thanh toán khoản nợ</h2>
+                </div>
+                <div className="card-content">
+                  <h3 style={{ marginBottom: '1rem', fontWeight: 600 }}>1. Chọn phương thức thanh toán:</h3>
+                  <div className="payment-methods" style={{ marginBottom: '2rem' }}>
+                    {methodsList.map(function (method) {
+                      var isSelected = selectedMethod === method.id
+                      return (
+                        <div
+                          key={method.id}
+                          className="payment-method-item"
+                          onClick={function () { setSelectedMethod(method.id) }}
+                          style={{
+                            borderColor: isSelected ? "var(--primary)" : undefined,
+                            background: isSelected ? "rgba(185,28,28,0.05)" : undefined,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div className="payment-method-icon">
+                            <CreditCard />
+                          </div>
+                          <div className="payment-method-info">
+                            <span className="payment-method-name">{method.name}</span>
+                            <span className="payment-method-desc">{method.description}</span>
+                          </div>
+                          {isSelected && (
+                            <CheckCircle size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Bank Transfer Info */}
+                  {bankInfo && selectedMethod === "bank_transfer" && (
+                    <div className="bank-info" style={{ marginBottom: '2rem' }}>
+                      <h4 className="bank-info-title">Thông tin chuyển khoản:</h4>
+                      <div className="bank-info-content">
+                        <p><strong>Ngân hàng:</strong> {bankInfo.bankName}</p>
+                        <p><strong>Số TK:</strong> {bankInfo.accountNumber}</p>
+                        <p><strong>Chủ TK:</strong> {bankInfo.accountHolder}</p>
+                        <p><strong>Nội dung:</strong> {bankInfo.content}</p>
+                        {bankInfo.note && (
+                          <p style={{ marginTop: "0.5rem", fontSize: "12px", color: "var(--muted-foreground)" }}>
+                            * {bankInfo.note}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    className="btn btn-primary btn-lg"
+                    style={{ width: "100%" }}
+                    onClick={handlePay}
+                    disabled={paying}
+                  >
+                    <Wallet />
+                    {paying ? "Đang xử lý..." : "Xác nhận thanh toán " + formatCurrency(specificTuition.remaining)}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        <div className="tuition-grid">
-          {/* Tuition Detail */}
-          {currentTuition && currentTuition.semester && (
-            <div className="card">
-              <div className="card-header">
-                <h2 className="card-title"><FileText /> Chi tiết học phí</h2>
-                <button className="btn btn-outline btn-sm">
-                  <Download size={14} /> Tải hóa đơn
-                </button>
-              </div>
-              <div className="card-content">
-                <div className="tuition-detail-list">
-                  <h4 className="tuition-detail-title">Các khoản thu:</h4>
-                  <div className="tuition-detail-item">
-                    <span>
-                      Học phí ({currentTuition.details && currentTuition.details.totalCredits} TC ×{" "}
-                      {formatCurrency(currentTuition.details && currentTuition.details.creditFee)})
-                    </span>
-                    <span className="font-semibold">
-                      {formatCurrency(currentTuition.details && currentTuition.details.totalAmount)}
-                    </span>
-                  </div>
-
-                  <div className="tuition-detail-divider" />
-
-                  <h4 className="tuition-detail-title">Miễn giảm:</h4>
-                  <div className="tuition-detail-item">
-                    <span>
-                      {currentTuition.details && currentTuition.details.discount > 0
-                        ? "Miễn giảm học phí"
-                        : "Không có"}
-                    </span>
-                    <span className="font-semibold text-success">
-                      -{formatCurrency(currentTuition.details && currentTuition.details.discount || 0)}
-                    </span>
-                  </div>
-
-                  <div className="tuition-detail-divider" />
-
-                  <div className="tuition-detail-item total">
-                    <span className="font-semibold">Tổng cộng:</span>
-                    <span className="font-semibold text-primary">
-                      {formatCurrency(currentTuition.details && currentTuition.details.totalAmount)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Payment Methods */}
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title"><CreditCard /> Phương thức thanh toán</h2>
-            </div>
-            <div className="card-content">
-              {methodsLoading ? (
-                <div style={{ color: "var(--muted-foreground)", padding: "1rem" }}>
-                  Đang tải...
-                </div>
-              ) : (
-                <div className="payment-methods">
-                  {methodsList.map(function (method) {
-                    var isSelected = selectedMethod === method.id
-                    return (
-                      <div
-                        key={method.id}
-                        className="payment-method-item"
-                        onClick={function () { setSelectedMethod(method.id) }}
-                        style={{
-                          borderColor: isSelected ? "var(--primary)" : undefined,
-                          background: isSelected ? "rgba(185,28,28,0.05)" : undefined,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div className="payment-method-icon">
-                          <CreditCard />
-                        </div>
-                        <div className="payment-method-info">
-                          <span className="payment-method-name">{method.name}</span>
-                          <span className="payment-method-desc">
-                            {method.description}
-                          </span>
-                        </div>
-                        {isSelected && (
-                          <CheckCircle size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Bank Transfer Info */}
-              {bankInfo && selectedMethod === "bank_transfer" && (
-                <div className="bank-info">
-                  <h4 className="bank-info-title">Thông tin chuyển khoản:</h4>
-                  <div className="bank-info-content">
-                    <p><strong>Ngân hàng:</strong> {bankInfo.bankName}</p>
-                    <p><strong>Số TK:</strong> {bankInfo.accountNumber}</p>
-                    <p><strong>Chủ TK:</strong> {bankInfo.accountHolder}</p>
-                    <p><strong>Nội dung:</strong> {bankInfo.content}</p>
-                    {bankInfo.note && (
-                      <p style={{ marginTop: "0.5rem", fontSize: "12px", color: "var(--muted-foreground)" }}>
-                        * {bankInfo.note}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Payment History */}
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title"><Calendar /> Lịch sử thanh toán</h2>
-          </div>
-          <div className="card-content">
-            {historyLoading ? (
-              <div style={{ padding: "1rem", textAlign: "center", color: "var(--muted-foreground)" }}>
-                Đang tải...
-              </div>
-            ) : historyList.length === 0 ? (
-              <div style={{ padding: "1rem", textAlign: "center", color: "var(--muted-foreground)" }}>
-                Chưa có lịch sử thanh toán
-              </div>
-            ) : (
-              <div className="table-wrapper">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Học kỳ</th>
-                      <th className="text-right">Số tiền</th>
-                      <th className="text-center">Trạng thái</th>
-                      <th className="text-center">Ngày thanh toán</th>
-                      <th className="text-center">Phương thức</th>
-                      <th className="text-center">Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historyList.map(function (item) {
-                      return (
-                        <tr key={item.id}>
-                          <td className="font-medium">{item.semester}</td>
-                          <td className="text-right">
-                            {formatCurrency(item.total_amount)}
-                          </td>
-                          <td className="text-center">
-                            <StatusBadge status={item.status} />
-                          </td>
-                          <td className="text-center">
-                            {item.payment_date ? formatDate(item.payment_date) : "—"}
-                          </td>
-                          <td className="text-center">
-                            {item.payment_method || "—"}
-                          </td>
-                          <td className="text-center">
-                            {item.status === "Đã thanh toán" && (
-                              <button className="btn btn-ghost btn-sm">
-                                <Printer size={14} /> In biên lai
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   )

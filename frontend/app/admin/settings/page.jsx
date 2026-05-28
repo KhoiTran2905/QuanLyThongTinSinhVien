@@ -21,7 +21,6 @@ export default function SettingsPage() {
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [systemAlerts, setSystemAlerts] = useState(true)
   const [autoBackup, setAutoBackup] = useState(true)
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
 
   // Form states
   const [generalForm, setGeneralForm] = useState({
@@ -29,6 +28,12 @@ export default function SettingsPage() {
     current_semester: "",
     language: "vi",
     timezone: "Asia/Ho_Chi_Minh",
+  })
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({
+    old_password: "",
+    new_password: "",
+    confirm_password: ""
   })
   const [profileForm, setProfileForm] = useState({
     full_name: "",
@@ -71,6 +76,20 @@ export default function SettingsPage() {
     {
       onSuccess: function () {
         showSuccess("Lưu cài đặt chung thành công")
+      },
+      onError: function (err) {
+        showError(err.message)
+      },
+    }
+  )
+
+  const { mutate: changePassword, loading: changingPassword } = useMutation(
+    settingService.changePassword,
+    {
+      onSuccess: function () {
+        showSuccess("Đổi mật khẩu thành công")
+        setShowPasswordModal(false)
+        setPasswordForm({ old_password: "", new_password: "", confirm_password: "" })
       },
       onError: function (err) {
         showError(err.message)
@@ -130,6 +149,19 @@ export default function SettingsPage() {
     saveGeneral(generalForm)
   }
 
+  function handleChangePassword(e) {
+    e.preventDefault()
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      showError("Mật khẩu xác nhận không khớp")
+      return
+    }
+    if (passwordForm.new_password.length < 6) {
+      showError("Mật khẩu mới phải có ít nhất 6 ký tự")
+      return
+    }
+    changePassword({ old_password: passwordForm.old_password, new_password: passwordForm.new_password })
+  }
+
   function handleSaveProfile(e) {
     e.preventDefault()
     saveProfile(profileForm)
@@ -169,15 +201,7 @@ export default function SettingsPage() {
 
         {/* System Status Cards */}
         <div className="summary-grid" style={{ marginBottom: "24px" }}>
-          <div className="summary-item">
-            <div className="summary-item-header">
-              <div className="summary-item-icon success"><Server size={20} /></div>
-            </div>
-            <div className="summary-item-value">
-              {statusLoading ? "..." : (systemStatus && systemStatus.uptime) || "—"}
-            </div>
-            <div className="summary-item-label">Uptime</div>
-          </div>
+
           <div className="summary-item">
             <div className="summary-item-header">
               <div className="summary-item-icon info"><HardDrive size={20} /></div>
@@ -221,9 +245,8 @@ export default function SettingsPage() {
               {[
                 { icon: Settings, label: "Cài đặt chung", sub: "Ngôn ngữ, múi giờ", href: "#general", color: "#b91c1c", active: true },
                 { icon: User, label: "Tài khoản", sub: "Thông tin cá nhân", href: "#account", color: "#2563eb" },
-                { icon: Bell, label: "Thông báo", sub: "Email, cảnh báo", href: "#notifications", color: "#f59e0b" },
+
                 { icon: Shield, label: "Bảo mật", sub: "Mật khẩu, 2FA", href: "#security", color: "#16a34a" },
-                { icon: Database, label: "Cơ sở dữ liệu", sub: "Sao lưu, tối ưu", href: "#database", color: "#8b5cf6" },
               ].map(function (item, idx) {
                 var IconComp = item.icon
                 return (
@@ -414,91 +437,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Notification Settings */}
-            <div className="card" id="notifications">
-              <div className="card-header">
-                <h2 className="card-title"><Bell size={20} /> Thông báo</h2>
-              </div>
-              <div className="card-content">
-                <div style={{ display: "grid", gap: "12px" }}>
-                  {[
-                    {
-                      icon: Bell, label: "Email thông báo",
-                      sub: "Nhận thông báo hệ thống qua email",
-                      value: emailNotifications,
-                      setter: setEmailNotifications,
-                      activeColor: "#16a34a",
-                    },
-                    {
-                      icon: AlertTriangle, label: "Cảnh báo hệ thống",
-                      sub: "Thông báo khi hệ thống có vấn đề",
-                      value: systemAlerts,
-                      setter: setSystemAlerts,
-                      activeColor: "#f59e0b",
-                    },
-                    {
-                      icon: RefreshCw, label: "Tự động sao lưu",
-                      sub: "Sao lưu dữ liệu tự động hàng ngày lúc 02:00",
-                      value: autoBackup,
-                      setter: setAutoBackup,
-                      activeColor: "#2563eb",
-                    },
-                  ].map(function (toggle, idx) {
-                    var IconComp = toggle.icon
-                    return (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: "16px 20px", borderRadius: "12px",
-                          border: toggle.value
-                            ? "1px solid rgba(" + (toggle.activeColor === "#16a34a" ? "22,163,74" : toggle.activeColor === "#f59e0b" ? "245,158,11" : "37,99,235") + ",0.3)"
-                            : "1px solid var(--border)",
-                          background: toggle.value ? "rgba(22,163,74,0.03)" : "var(--card)",
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                          <div style={{
-                            width: "44px", height: "44px", borderRadius: "10px",
-                            background: toggle.value ? "rgba(22,163,74,0.1)" : "var(--accent)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}>
-                            <IconComp size={22} style={{ color: toggle.value ? toggle.activeColor : "var(--muted-foreground)" }} />
-                          </div>
-                          <div>
-                            <p style={{ fontSize: "15px", fontWeight: 600, marginBottom: "2px" }}>
-                              {toggle.label}
-                            </p>
-                            <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>
-                              {toggle.sub}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={function () { toggle.setter(!toggle.value) }}
-                          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px" }}
-                        >
-                          {toggle.value
-                            ? <ToggleRight size={32} style={{ color: toggle.activeColor }} />
-                            : <ToggleLeft size={32} style={{ color: "var(--muted-foreground)" }} />}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={handleSaveNotifications}
-                    disabled={savingNotif}
-                  >
-                    <Save size={16} />
-                    {savingNotif ? "Đang lưu..." : "Lưu thông báo"}
-                  </button>
-                </div>
-              </div>
-            </div>
+
 
             {/* Security Settings */}
             <div className="card" id="security">
@@ -529,128 +468,62 @@ export default function SettingsPage() {
                         </p>
                       </div>
                     </div>
-                    <button className="btn btn-outline btn-sm">Đổi mật khẩu</button>
-                  </div>
-
-                  <div style={{
-                    padding: "16px 20px", borderRadius: "12px",
-                    border: twoFactorEnabled ? "1px solid rgba(22,163,74,0.3)" : "1px solid var(--border)",
-                    background: twoFactorEnabled ? "rgba(22,163,74,0.03)" : "var(--card)",
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                      <div style={{
-                        width: "44px", height: "44px", borderRadius: "10px",
-                        background: twoFactorEnabled ? "rgba(22,163,74,0.1)" : "rgba(37,99,235,0.1)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
-                        <Lock size={22} style={{ color: twoFactorEnabled ? "#16a34a" : "#2563eb" }} />
-                      </div>
-                      <div>
-                        <p style={{ fontSize: "15px", fontWeight: 600, marginBottom: "2px" }}>
-                          Xác thực 2 lớp (2FA)
-                        </p>
-                        <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>
-                          Thêm bảo mật với xác thực 2 yếu tố
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      className={"btn btn-sm " + (twoFactorEnabled ? "btn-success" : "btn-primary")}
-                      onClick={function () { setTwoFactorEnabled(!twoFactorEnabled) }}
-                    >
-                      {twoFactorEnabled ? "Đã bật" : "Kích hoạt"}
-                    </button>
+                    <button className="btn btn-outline btn-sm" onClick={() => setShowPasswordModal(true)}>Đổi mật khẩu</button>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Database Settings */}
-            <div className="card" id="database">
-              <div className="card-header">
-                <h2 className="card-title"><Database size={20} /> Cơ sở dữ liệu</h2>
-              </div>
-              <div className="card-content">
-                <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                  gap: "16px", marginBottom: "20px",
-                }}>
-                  <div style={{
-                    padding: "20px", borderRadius: "12px",
-                    background: "rgba(37,99,235,0.05)",
-                    border: "1px solid rgba(37,99,235,0.2)",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                      <HardDrive size={18} style={{ color: "#2563eb" }} />
-                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)", textTransform: "uppercase", fontWeight: 600 }}>
-                        Dung lượng
-                      </span>
-                    </div>
-                    <p style={{ fontSize: "22px", fontWeight: 700, color: "#2563eb" }}>
-                      {statusLoading ? "..." : (systemStatus && systemStatus.storage) || "—"}
-                    </p>
-                  </div>
 
-                  <div style={{
-                    padding: "20px", borderRadius: "12px",
-                    background: "rgba(22,163,74,0.05)",
-                    border: "1px solid rgba(22,163,74,0.2)",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                      <Clock size={18} style={{ color: "#16a34a" }} />
-                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)", textTransform: "uppercase", fontWeight: 600 }}>
-                        Sao lưu
-                      </span>
-                    </div>
-                    <p style={{ fontSize: "22px", fontWeight: 700, color: "#16a34a" }}>
-                      {settings && settings.last_backup
-                        ? new Date(settings.last_backup).toLocaleDateString("vi-VN")
-                        : "—"}
-                    </p>
-                  </div>
-
-                  <div style={{
-                    padding: "20px", borderRadius: "12px",
-                    background: "rgba(139,92,246,0.05)",
-                    border: "1px solid rgba(139,92,246,0.2)",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                      <Zap size={18} style={{ color: "#8b5cf6" }} />
-                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)", textTransform: "uppercase", fontWeight: 600 }}>
-                        Hiệu suất
-                      </span>
-                    </div>
-                    <p style={{ fontSize: "22px", fontWeight: 700, color: "#8b5cf6" }}>
-                      {statusLoading ? "..." : (systemStatus && systemStatus.uptime) || "—"}
-                    </p>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={function () { doBackup() }}
-                    disabled={backingUp}
-                  >
-                    <Download size={16} />
-                    {backingUp ? "Đang sao lưu..." : "Sao lưu ngay"}
-                  </button>
-                  <button className="btn btn-outline btn-sm">
-                    <Upload size={16} /> Khôi phục
-                  </button>
-                  <button className="btn btn-outline btn-sm">
-                    <RefreshCw size={16} /> Tối ưu hóa
-                  </button>
-                  <button className="btn btn-outline btn-sm">
-                    <Eye size={16} /> Xem nhật ký
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
+
+        {/* Change Password Modal */}
+        {showPasswordModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+            <div style={{ background: "var(--card)", padding: "2rem", borderRadius: "0.75rem", width: 450, maxWidth: "90%" }}>
+              <h3 style={{ fontWeight: 700, margin: "0 0 1.5rem 0", fontSize: "18px" }}>Đổi mật khẩu</h3>
+              <form onSubmit={handleChangePassword}>
+                <div style={{ marginBottom: "1rem" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "14px", fontWeight: 500 }}>Mật khẩu hiện tại</label>
+                  <input 
+                    type="password" 
+                    className="form-input" 
+                    required 
+                    value={passwordForm.old_password} 
+                    onChange={e => setPasswordForm({...passwordForm, old_password: e.target.value})} 
+                  />
+                </div>
+                <div style={{ marginBottom: "1rem" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "14px", fontWeight: 500 }}>Mật khẩu mới</label>
+                  <input 
+                    type="password" 
+                    className="form-input" 
+                    required 
+                    value={passwordForm.new_password} 
+                    onChange={e => setPasswordForm({...passwordForm, new_password: e.target.value})} 
+                  />
+                </div>
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "14px", fontWeight: 500 }}>Xác nhận mật khẩu mới</label>
+                  <input 
+                    type="password" 
+                    className="form-input" 
+                    required 
+                    value={passwordForm.confirm_password} 
+                    onChange={e => setPasswordForm({...passwordForm, confirm_password: e.target.value})} 
+                  />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+                  <button type="button" className="btn btn-outline" onClick={() => setShowPasswordModal(false)} disabled={changingPassword}>Hủy</button>
+                  <button type="submit" className="btn btn-primary" disabled={changingPassword}>
+                    {changingPassword ? "Đang xử lý..." : "Đổi mật khẩu"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

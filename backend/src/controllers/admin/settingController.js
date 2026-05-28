@@ -5,6 +5,39 @@ const bcrypt = require('bcryptjs');
 
 // @desc    Get all settings
 // @route   GET /api/admin/settings
+
+// @desc    Change password
+// @route   PUT /api/admin/settings/password
+const changePassword = async (req, res) => {
+  try {
+    const { old_password, new_password } = req.body;
+    
+    if (!old_password || !new_password) {
+      return ApiResponse.badRequest(res, 'Vui lòng nhập đầy đủ thông tin');
+    }
+
+    const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    if (!user) {
+      return ApiResponse.notFound(res, 'Không tìm thấy người dùng');
+    }
+
+    const isMatch = await bcrypt.compare(old_password, user.password);
+    if (!isMatch) {
+      return ApiResponse.badRequest(res, 'Mật khẩu hiện tại không chính xác');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(new_password, salt);
+
+    await insert('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
+
+    return ApiResponse.success(res, null, 'Đổi mật khẩu thành công');
+  } catch (error) {
+    console.error('Change password error:', error);
+    return ApiResponse.error(res, 'Lỗi khi đổi mật khẩu');
+  }
+};
+
 const getSettings = async (req, res) => {
   try {
     const settings = await query('SELECT * FROM settings');
@@ -115,7 +148,7 @@ const updateNotifications = async (req, res) => {
 // @route   GET /api/admin/settings/system-status
 const getSystemStatus = async (req, res) => {
   try {
-    const totalUsers = await queryOne('SELECT COUNT(*) as count FROM users WHERE is_active = true');
+    const activeSessions = await queryOne('SELECT COUNT(*) as count FROM users WHERE last_login >= NOW() - INTERVAL 30 MINUTE AND is_active = true');
     const dbSize = await queryOne(
       `SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS size_mb
        FROM information_schema.TABLES
@@ -123,11 +156,17 @@ const getSystemStatus = async (req, res) => {
       [process.env.DB_NAME]
     );
 
+    const uptimeSeconds = process.uptime();
+    const days = Math.floor(uptimeSeconds / (24 * 3600));
+    const hours = Math.floor((uptimeSeconds % (24 * 3600)) / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const uptimeStr = `${days} ngày ${hours} giờ ${minutes} phút`;
+
     return ApiResponse.success(res, {
       version: 'v2.5.1',
-      uptime: '99.9%',
+      uptime: uptimeStr,
       storage: `${dbSize.size_mb || 0} MB`,
-      activeUsers: totalUsers.count,
+      activeUsers: activeSessions.count,
       lastUpdated: new Date().toISOString()
     });
   } catch (error) {
@@ -195,6 +234,7 @@ const backupDatabase = async (req, res) => {
 
 module.exports = {
   getSettings,
+  changePassword,
   updateGeneral,
   updateProfile,
   updateNotifications,

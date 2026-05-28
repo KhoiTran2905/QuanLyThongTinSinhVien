@@ -5,6 +5,7 @@ const tuitionController = require('../../controllers/student/tuitionController')
 
 router.get('/current', tuitionController.getCurrentTuition);
 router.get('/history', tuitionController.getTuitionHistory);
+router.get('/semester/:semesterCode', tuitionController.getTuitionDetailsBySemester);
 router.get('/payment-methods', tuitionController.getPaymentMethods);
 router.get('/bank-info', tuitionController.getBankInfo);
 router.get('/receipt/:id', tuitionController.getReceipt);

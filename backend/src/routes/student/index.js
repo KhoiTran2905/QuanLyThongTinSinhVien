@@ -10,8 +10,6 @@ router.use(authorize('student'));
 // Sub-routes
 router.use('/dashboard', require('./dashboardRoutes'));
 router.use('/profile', require('./profileRoutes'));
-router.use('/registration', require('./registrationRoutes'));
-router.use('/schedule', require('./scheduleRoutes'));
 router.use('/grades', require('./gradeRoutes'));
 router.use('/tuition', require('./tuitionRoutes'));
 router.use('/notifications', require('./notificationRoutes'));

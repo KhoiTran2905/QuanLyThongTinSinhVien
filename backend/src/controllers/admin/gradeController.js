@@ -3,12 +3,13 @@ const { query, queryOne, insert, transaction } = require('../../config/database'
 const ApiResponse = require('../../utils/apiResponse');
 const { getPagination, getPagingData } = require('../../utils/pagination');
 const { getLetterGrade, calculateAverage } = require('../../utils/helpers');
+const ExcelJS = require('exceljs');
 
 // @desc    Get all grades with filters
 // @route   GET /api/admin/grades
 const getAllGrades = async (req, res) => {
   try {
-    const { page, limit, search, course_id, class_id, semester, status } = req.query;
+    const { page, limit, search, course_id, class_id, semester, status, department_id, cohort_id, major_id, letter_grade } = req.query;
     const { currentPage, pageSize, offset } = getPagination(page, limit);
 
     let whereClause = 'WHERE 1=1';
@@ -38,6 +39,26 @@ const getAllGrades = async (req, res) => {
     if (status && status !== 'all') {
       whereClause += ' AND g.status = ?';
       params.push(status);
+    }
+
+    if (department_id) {
+      whereClause += ' AND s.department_id = ?';
+      params.push(department_id);
+    }
+
+    if (cohort_id) {
+      whereClause += ' AND s.cohort_id = ?';
+      params.push(cohort_id);
+    }
+
+    if (major_id) {
+      whereClause += ' AND s.major_id = ?';
+      params.push(major_id);
+    }
+
+    if (letter_grade && letter_grade !== 'all') {
+      whereClause += ' AND g.letter_grade = ?';
+      params.push(letter_grade);
     }
 
     const countResult = await queryOne(
@@ -358,6 +379,49 @@ const getGPATrends = async (req, res) => {
   }
 };
 
+// @desc    Delete grade
+// @route   DELETE /api/admin/grades/:id
+const deleteGrade = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const grade = await queryOne('SELECT * FROM grades WHERE id = ?', [id]);
+    if (!grade) {
+      return ApiResponse.notFound(res, 'Không tìm thấy bảng điểm');
+    }
+
+    await insert('DELETE FROM grades WHERE id = ?', [id]);
+
+    if (grade.status === 'Đã duyệt') {
+      await updateStudentGPA(grade.student_id);
+    }
+
+    return ApiResponse.success(res, null, 'Xóa bảng điểm thành công');
+  } catch (error) {
+    console.error('Delete grade error:', error);
+    return ApiResponse.error(res, 'Lỗi khi xóa bảng điểm');
+  }
+};
+
+// @desc    Get form options for grades (students & courses)
+// @route   GET /api/admin/grades/options/form-data
+const getGradeFormOptions = async (req, res) => {
+  try {
+    const students = await query(`
+      SELECT s.id, s.student_code, s.full_name, s.department_id, s.major_id, s.class_id 
+      FROM students s 
+      ORDER BY s.student_code ASC
+    `);
+    const courses = await query('SELECT id, course_code, name FROM courses ORDER BY course_code ASC');
+    const classes = await query('SELECT id, class_code, name, major_id FROM classes ORDER BY class_code ASC');
+
+    return ApiResponse.success(res, { students, courses, classes });
+  } catch (error) {
+    console.error('Get grade form options error:', error);
+    return ApiResponse.error(res, 'Lỗi khi lấy dữ liệu form');
+  }
+};
+
 // Helper: Update student's cumulative GPA
 const updateStudentGPA = async (studentId) => {
   try {
@@ -384,6 +448,123 @@ const updateStudentGPA = async (studentId) => {
   }
 };
 
+// @desc    Import grades from excel
+// @route   POST /api/admin/grades/import
+const importGrades = async (req, res) => {
+  try {
+    const { department_id, cohort_id, major_id, class_id, semester } = req.body;
+    if (!req.file) return ApiResponse.error(res, 'Vui lòng đính kèm file Excel hoặc CSV');
+
+    let successCount = 0;
+    let errorCount = 0;
+    let errors = [];
+
+    let cQuery = 'SELECT id, student_code FROM students WHERE 1=1';
+    let params = [];
+    if (class_id) { cQuery += ' AND class_id = ?'; params.push(class_id); }
+    else if (major_id) { cQuery += ' AND major_id = ?'; params.push(major_id); }
+    else if (department_id) { cQuery += ' AND department_id = ?'; params.push(department_id); }
+    else if (cohort_id) { cQuery += ' AND cohort_id = ?'; params.push(cohort_id); }
+
+    const students = await query(cQuery, params);
+    const studentMap = {};
+    students.forEach(s => studentMap[s.student_code.toLowerCase()] = s.id);
+
+    const courses = await query('SELECT id, course_code FROM courses');
+    const courseMap = {};
+    courses.forEach(c => courseMap[c.course_code.toLowerCase()] = c.id);
+
+    const isCSV = req.file.originalname.toLowerCase().endsWith('.csv') || req.file.mimetype === 'text/csv';
+    const rows = [];
+
+    if (isCSV) {
+      // Parse CSV
+      const text = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, ''); // strip BOM
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      lines.slice(1).forEach((line, idx) => {
+        const cells = line.split(',');
+        rows.push({
+          rowNumber: idx + 2,
+          sCode: cells[0]?.trim(),
+          cCode: cells[1]?.trim(),
+          att: parseFloat(cells[2]),
+          mid: parseFloat(cells[3]),
+          fin: parseFloat(cells[4])
+        });
+      });
+    } else {
+      // Parse Excel
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer);
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) return ApiResponse.error(res, 'File Excel không có dữ liệu');
+
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) {
+          rows.push({
+            rowNumber,
+            sCode: row.getCell(1).value?.toString().trim(),
+            cCode: row.getCell(2).value?.toString().trim(),
+            att: parseFloat(row.getCell(3).value),
+            mid: parseFloat(row.getCell(4).value),
+            fin: parseFloat(row.getCell(5).value)
+          });
+        }
+      });
+    }
+
+    for (const r of rows) {
+      if (!r.sCode || !r.cCode) {
+        errorCount++;
+        continue;
+      }
+      const studentId = studentMap[r.sCode.toLowerCase()];
+      const courseId = courseMap[r.cCode.toLowerCase()];
+
+      if (!studentId || !courseId) {
+        errorCount++;
+        errors.push(`Dòng ${r.rowNumber}: Không tìm thấy SV (${r.sCode}) hoặc Môn học (${r.cCode}) trong bối cảnh lớp/ngành đã chọn`);
+        continue;
+      }
+
+      let average_score = null;
+      let letter_grade = null;
+      let gpa_score = null;
+
+      if (!isNaN(r.mid) && !isNaN(r.fin)) {
+        average_score = calculateAverage(r.mid, r.fin);
+        const gradeInfo = getLetterGrade(average_score);
+        letter_grade = gradeInfo.letter;
+        gpa_score = gradeInfo.gpa;
+      }
+
+      try {
+        await insert(
+          `INSERT INTO grades (student_id, course_id, semester, attendance_score, midterm_score, final_score, average_score, letter_grade, gpa_score, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Chờ duyệt')
+           ON DUPLICATE KEY UPDATE 
+           attendance_score=VALUES(attendance_score), midterm_score=VALUES(midterm_score), final_score=VALUES(final_score),
+           average_score=VALUES(average_score), letter_grade=VALUES(letter_grade), gpa_score=VALUES(gpa_score), status='Chờ duyệt'`,
+          [studentId, courseId, semester, 
+           isNaN(r.att) ? null : r.att, 
+           isNaN(r.mid) ? null : r.mid, 
+           isNaN(r.fin) ? null : r.fin, 
+           average_score, letter_grade, gpa_score]
+        );
+        successCount++;
+      } catch (err) {
+        errorCount++;
+        errors.push(`Dòng ${r.rowNumber}: Lỗi lưu dữ liệu`);
+      }
+    }
+
+    return ApiResponse.success(res, { successCount, errorCount, errors }, 'Import hoàn tất');
+  } catch (error) {
+    console.error('Import grade error:', error);
+    return ApiResponse.error(res, 'Lỗi khi import file Excel');
+  }
+};
+
 module.exports = {
   getAllGrades,
   getGradeById,
@@ -394,5 +575,8 @@ module.exports = {
   approveAll,
   getGradeStats,
   getGradeDistribution,
-  getGPATrends
+  getGPATrends,
+  deleteGrade,
+  getGradeFormOptions,
+  importGrades
 };
