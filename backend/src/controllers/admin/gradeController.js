@@ -204,17 +204,23 @@ const updateGrade = async (req, res) => {
       gpa_score = gradeInfo.gpa;
     }
 
-    await insert(
-      `UPDATE grades SET 
-        attendance_score = ?, midterm_score = ?, final_score = ?,
-        average_score = ?, letter_grade = ?, gpa_score = ?,
-        status = 'Chờ duyệt'
-       WHERE id = ?`,
-      [
-        attendance_score !== undefined ? attendance_score : grade.attendance_score,
-        mid, fin, average_score, letter_grade, gpa_score, id
-      ]
-    );
+    await transaction(async (connection) => {
+      await connection.execute(
+        `UPDATE grades SET 
+          attendance_score = ?, midterm_score = ?, final_score = ?,
+          average_score = ?, letter_grade = ?, gpa_score = ?,
+          status = 'Chờ duyệt'
+         WHERE id = ?`,
+        [
+          attendance_score !== undefined ? attendance_score : grade.attendance_score,
+          mid, fin, average_score, letter_grade, gpa_score, id
+        ]
+      );
+
+      if (grade.status === 'Đã duyệt') {
+        await updateStudentGPA(grade.student_id, connection);
+      }
+    });
 
     return ApiResponse.success(res, null, 'Cập nhật điểm thành công');
   } catch (error) {
@@ -234,13 +240,13 @@ const approveGrade = async (req, res) => {
       return ApiResponse.notFound(res, 'Không tìm thấy bảng điểm');
     }
 
-    await insert(
-      `UPDATE grades SET status = 'Đã duyệt', approved_by = ?, approved_at = NOW() WHERE id = ?`,
-      [req.user.id, id]
-    );
-
-    // Update student GPA
-    await updateStudentGPA(grade.student_id);
+    await transaction(async (connection) => {
+      await connection.execute(
+        `UPDATE grades SET status = 'Đã duyệt', approved_by = ?, approved_at = NOW() WHERE id = ?`,
+        [req.user.id, id]
+      );
+      await updateStudentGPA(grade.student_id, connection);
+    });
 
     return ApiResponse.success(res, null, 'Duyệt điểm thành công');
   } catch (error) {
@@ -291,20 +297,26 @@ const approveAll = async (req, res) => {
       params.push(semester);
     }
 
-    const result = await insert(
-      `UPDATE grades SET status = 'Đã duyệt', approved_by = ?, approved_at = NOW() ${whereClause}`,
-      [req.user.id, ...params]
-    );
-
-    // Update GPA for affected students
     const affectedStudents = await query(
-      `SELECT DISTINCT student_id FROM grades ${whereClause.replace("status = 'Chờ duyệt'", "status = 'Đã duyệt' AND approved_at >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)")}`,
+      `SELECT DISTINCT student_id FROM grades ${whereClause}`,
       params
     );
 
-    for (const student of affectedStudents) {
-      await updateStudentGPA(student.student_id);
+    if (affectedStudents.length === 0) {
+      return ApiResponse.success(res, { approvedCount: 0 }, 'Không có điểm nào chờ duyệt');
     }
+
+    const result = await transaction(async (connection) => {
+      const [updateResult] = await connection.execute(
+        `UPDATE grades SET status = 'Đã duyệt', approved_by = ?, approved_at = NOW() ${whereClause}`,
+        [req.user.id, ...params]
+      );
+
+      for (const student of affectedStudents) {
+        await updateStudentGPA(student.student_id, connection);
+      }
+      return updateResult;
+    });
 
     return ApiResponse.success(res, {
       approvedCount: result.affectedRows
@@ -423,25 +435,31 @@ const getGradeFormOptions = async (req, res) => {
 };
 
 // Helper: Update student's cumulative GPA
-const updateStudentGPA = async (studentId) => {
+const updateStudentGPA = async (studentId, connection = null) => {
   try {
-    const result = await queryOne(
-      `SELECT AVG(g.gpa_score) as avg_gpa, SUM(c.credits) as total_credits
-       FROM grades g
-       LEFT JOIN courses c ON g.course_id = c.id
-       WHERE g.student_id = ? AND g.status = 'Đã duyệt' AND g.gpa_score > 0`,
-      [studentId]
-    );
+    let result;
+    const sqlSelect = `SELECT AVG(g.gpa_score) as avg_gpa, SUM(c.credits) as total_credits
+                       FROM grades g
+                       LEFT JOIN courses c ON g.course_id = c.id
+                       WHERE g.student_id = ? AND g.status = 'Đã duyệt' AND g.gpa_score > 0`;
+
+    if (connection) {
+      const [rows] = await connection.execute(sqlSelect, [studentId]);
+      result = rows[0];
+    } else {
+      result = await queryOne(sqlSelect, [studentId]);
+    }
 
     if (result) {
-      await insert(
-        'UPDATE students SET gpa = ?, total_credits = ? WHERE id = ?',
-        [
-          result.avg_gpa ? parseFloat(result.avg_gpa).toFixed(2) : 0,
-          result.total_credits || 0,
-          studentId
-        ]
-      );
+      const gpa = result.avg_gpa ? parseFloat(result.avg_gpa).toFixed(2) : 0;
+      const credits = result.total_credits || 0;
+      const sqlUpdate = 'UPDATE students SET gpa = ?, total_credits = ? WHERE id = ?';
+
+      if (connection) {
+        await connection.execute(sqlUpdate, [gpa, credits, studentId]);
+      } else {
+        await insert(sqlUpdate, [gpa, credits, studentId]);
+      }
     }
   } catch (error) {
     console.error('Update student GPA error:', error);
