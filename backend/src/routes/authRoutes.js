@@ -14,5 +14,6 @@ router.post('/refresh-token', authController.refreshToken);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);
 router.put('/change-password', authenticate, validate(changePasswordValidation), authController.changePassword);
+router.post('/force-change-password', authController.forceChangePassword);
 
 module.exports = router;

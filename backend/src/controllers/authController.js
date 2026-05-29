@@ -49,6 +49,25 @@ const login = async (req, res) => {
       return ApiResponse.unauthorized(res, 'Tên đăng nhập hoặc mật khẩu không đúng');
     }
 
+    // Force password change for student's first login
+    if (user.role === 'student' && password === '123456') {
+      const tempToken = jwt.sign(
+        { id: user.id, username: user.username, role: user.role, isTemp: true },
+        process.env.JWT_SECRET,
+        { expiresIn: '15m' }
+      );
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Vui lòng đổi mật khẩu trong lần đăng nhập đầu tiên',
+        data: {
+          requirePasswordChange: true,
+          tempToken,
+          user: { username: user.username }
+        }
+      });
+    }
+
     // Generate tokens
     const accessToken = generateAccessToken(user, rememberMe);
     const refreshToken = generateRefreshToken(user, rememberMe);
@@ -251,10 +270,103 @@ const changePassword = async (req, res) => {
   }
 };
 
+// @desc    Force change password on first login
+// @route   POST /api/auth/force-change-password
+// @access  Public (with temp token)
+const forceChangePassword = async (req, res) => {
+  try {
+    const { tempToken, newPassword } = req.body;
+
+    if (!tempToken || !newPassword) {
+      return ApiResponse.badRequest(res, 'Vui lòng cung cấp đầy đủ thông tin');
+    }
+
+    // Verify temp token
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+      if (!decoded.isTemp) {
+        return ApiResponse.unauthorized(res, 'Token không hợp lệ cho chức năng này');
+      }
+    } catch (err) {
+      return ApiResponse.unauthorized(res, 'Phiên đổi mật khẩu đã hết hạn hoặc không hợp lệ');
+    }
+
+    // Validate new password (at least 8 chars, letter, number, special char)
+    const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+    if (!strongPasswordRegex.test(newPassword)) {
+      return ApiResponse.badRequest(res, 'Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ cái, số và ký tự đặc biệt');
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password in db
+    await insert(
+      'UPDATE users SET password = ? WHERE id = ?',
+      [hashedPassword, decoded.id]
+    );
+
+    // After changing password, automatically log them in
+    const user = await queryOne('SELECT * FROM users WHERE id = ?', [decoded.id]);
+    
+    if (!user || !user.is_active) {
+      return ApiResponse.unauthorized(res, 'Tài khoản không hợp lệ hoặc đã bị khóa');
+    }
+
+    // Generate real tokens
+    const accessToken = generateAccessToken(user, false);
+    const refreshToken = generateRefreshToken(user, false);
+
+    // Save refresh token to database
+    await insert(
+      'UPDATE users SET refresh_token = ?, last_login = NOW() WHERE id = ?',
+      [refreshToken, user.id]
+    );
+
+    // Get additional user info based on role
+    let userInfo = {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    };
+
+    if (user.role === 'student') {
+      const student = await queryOne(
+        'SELECT id, student_code, full_name, avatar, email FROM students WHERE user_id = ?',
+        [user.id]
+      );
+      if (student) {
+        userInfo = { ...userInfo, ...student, studentId: student.id };
+      }
+    }
+
+    // Set cookie
+    res.cookie('token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    return ApiResponse.success(res, {
+      user: userInfo,
+      accessToken,
+      refreshToken
+    }, 'Đổi mật khẩu và đăng nhập thành công');
+
+  } catch (error) {
+    console.error('Force change password error:', error);
+    return ApiResponse.error(res, 'Lỗi server khi đổi mật khẩu');
+  }
+};
+
 module.exports = {
   login,
   logout,
   refreshToken,
   getMe,
-  changePassword
+  changePassword,
+  forceChangePassword
 };

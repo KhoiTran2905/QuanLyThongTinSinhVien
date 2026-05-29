@@ -1,4 +1,5 @@
 // src/controllers/admin/studentController.js
+const fs = require('fs');
 const { query, queryOne, insert, transaction } = require('../../config/database');
 const bcrypt = require('bcryptjs');
 const ApiResponse = require('../../utils/apiResponse');
@@ -229,6 +230,14 @@ const updateStudent = async (req, res) => {
       return ApiResponse.notFound(res, 'Không tìm thấy sinh viên');
     }
 
+    // Check unique email constraint
+    if (updateData.email && updateData.email !== student.email) {
+      const emailExists = await queryOne('SELECT id FROM students WHERE email = ? AND id != ?', [updateData.email, id]);
+      if (emailExists) {
+        return ApiResponse.badRequest(res, 'Email này đã được sử dụng bởi sinh viên khác');
+      }
+    }
+
     // Build dynamic update query
     const allowedFields = [
       'full_name', 'date_of_birth', 'gender', 'ethnicity', 'religion',
@@ -260,10 +269,33 @@ const updateStudent = async (req, res) => {
 
     values.push(id);
 
-    await insert(
-      `UPDATE students SET ${updates.join(', ')} WHERE id = ?`,
-      values
-    );
+    await transaction(async (connection) => {
+      await connection.execute(
+        `UPDATE students SET ${updates.join(', ')} WHERE id = ?`,
+        values
+      );
+
+      // Handle class_id change
+      if (updateData.class_id !== undefined) {
+        const newClassId = updateData.class_id === "" ? null : updateData.class_id;
+        const oldClassId = student.class_id;
+
+        if (String(newClassId) !== String(oldClassId)) {
+          if (oldClassId) {
+            await connection.execute(
+              'UPDATE classes SET total_students = GREATEST(total_students - 1, 0) WHERE id = ?',
+              [oldClassId]
+            );
+          }
+          if (newClassId) {
+            await connection.execute(
+              'UPDATE classes SET total_students = total_students + 1 WHERE id = ?',
+              [newClassId]
+            );
+          }
+        }
+      }
+    });
 
     return ApiResponse.success(res, null, 'Cập nhật sinh viên thành công');
   } catch (error) {
@@ -365,47 +397,44 @@ const importStudents = async (req, res) => {
     let successCount = 0;
     const errors = [];
 
-    // Pre-fetch reference data
+    // Pre-fetch reference data and build dictionaries (O(1) lookup)
     const departments = await query('SELECT id, code, name FROM departments');
     const majors = await query('SELECT id, code, name FROM majors');
     const classes = await query('SELECT id, class_code, name FROM classes');
     const cohorts = await query('SELECT id, code, name FROM cohorts');
 
-    const getDeptId = (val) => {
-      if (!val) return null;
-      const v = val.toString().trim().toLowerCase();
-      const match = departments.find(d => d.code?.toLowerCase() === v || d.name?.toLowerCase() === v);
-      return match ? match.id : null;
-    };
-    const getMajorId = (val) => {
-      if (!val) return null;
-      const v = val.toString().trim().toLowerCase();
-      const match = majors.find(m => m.code?.toLowerCase() === v || m.name?.toLowerCase() === v);
-      return match ? match.id : null;
-    };
-    const getClassId = (val) => {
-      if (!val) return null;
-      const v = val.toString().trim().toLowerCase();
-      const match = classes.find(c => c.class_code?.toLowerCase() === v || c.name?.toLowerCase() === v);
-      return match ? match.id : null;
-    };
-    const getCohortId = (val) => {
-      if (!val) return null;
-      const v = val.toString().trim().toLowerCase();
-      const match = cohorts.find(c => c.code?.toLowerCase() === v || c.name?.toLowerCase() === v);
-      return match ? match.id : null;
-    };
+    const deptMap = {};
+    departments.forEach(d => {
+      if(d.code) deptMap[d.code.toLowerCase()] = d.id;
+      if(d.name) deptMap[d.name.toLowerCase()] = d.id;
+    });
+
+    const majorMap = {};
+    majors.forEach(m => {
+      if(m.code) majorMap[m.code.toLowerCase()] = m.id;
+      if(m.name) majorMap[m.name.toLowerCase()] = m.id;
+    });
+
+    const classMap = {};
+    classes.forEach(c => {
+      if(c.class_code) classMap[c.class_code.toLowerCase()] = c.id;
+      if(c.name) classMap[c.name.toLowerCase()] = c.id;
+    });
+
+    const cohortMap = {};
+    cohorts.forEach(c => {
+      if(c.code) cohortMap[c.code.toLowerCase()] = c.id;
+      if(c.name) cohortMap[c.name.toLowerCase()] = c.id;
+    });
 
     const parseDate = (val) => {
       if (!val) return null;
       if (val instanceof Date) return val;
       const parts = val.toString().split(/[-/]/);
       if (parts.length === 3) {
-        // Assume DD/MM/YYYY
         if (parts[0].length === 2 && parts[2].length === 4) {
           return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
         }
-        // Assume YYYY-MM-DD
         if (parts[0].length === 4) {
           return new Date(`${parts[0]}-${parts[1]}-${parts[2]}`);
         }
@@ -422,7 +451,6 @@ const importStudents = async (req, res) => {
       const email = row.getCell(colEmail).value?.toString().trim();
 
       if (!student_code || !full_name || !email) {
-        // Skip empty rows
         if (!student_code && !full_name && !email) continue;
         errors.push(`Dòng ${rowNumber}: Thiếu thông tin bắt buộc`);
         continue;
@@ -438,11 +466,20 @@ const importStudents = async (req, res) => {
       const gender = colGender ? (row.getCell(colGender).value?.toString().trim() || 'Nam') : 'Nam';
       const date_of_birth = colDob ? parseDate(row.getCell(colDob).value) : null;
       const phone = colPhone ? row.getCell(colPhone).value?.toString().trim() : null;
-      const class_id = colClass ? getClassId(row.getCell(colClass).value) : null;
-      const major_id = colMajor ? getMajorId(row.getCell(colMajor).value) : null;
-      const department_id = colDept ? getDeptId(row.getCell(colDept).value) : null;
+      
+      const classVal = colClass ? row.getCell(colClass).value?.toString().trim().toLowerCase() : null;
+      const class_id = classVal ? classMap[classVal] : null;
+
+      const majorVal = colMajor ? row.getCell(colMajor).value?.toString().trim().toLowerCase() : null;
+      const major_id = majorVal ? majorMap[majorVal] : null;
+
+      const deptVal = colDept ? row.getCell(colDept).value?.toString().trim().toLowerCase() : null;
+      const department_id = deptVal ? deptMap[deptVal] : null;
+
       const training_system = colSystem ? (row.getCell(colSystem).value?.toString().trim() || 'Chính quy') : 'Chính quy';
-      const cohort_id = colCohort ? getCohortId(row.getCell(colCohort).value) : null;
+      
+      const cohortVal = colCohort ? row.getCell(colCohort).value?.toString().trim().toLowerCase() : null;
+      const cohort_id = cohortVal ? cohortMap[cohortVal] : null;
 
       try {
         await transaction(async (connection) => {
@@ -476,21 +513,18 @@ const importStudents = async (req, res) => {
       }
     }
 
-    // Delete uploaded file after processing
-    const fs = require('fs');
-    if (fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
     return ApiResponse.success(res, { successCount, errors }, `Nhập thành công ${successCount} sinh viên`);
   } catch (error) {
     console.error('Import students error:', error);
-    // Delete uploaded file if error occurs
-    if (req.file) {
-      const fs = require('fs');
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    }
     return ApiResponse.error(res, 'Lỗi khi import file Excel: ' + error.message);
+  } finally {
+    if (req.file && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {
+        console.error('Failed to delete temp file:', e);
+      }
+    }
   }
 };
 
