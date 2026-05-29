@@ -195,6 +195,15 @@ export function AuthProvider({ children }) {
       const response = await apiLogin(username, password);
 
       if (response.success && response.data) {
+        if (response.data.requirePasswordChange) {
+          return {
+            success: true,
+            requirePasswordChange: true,
+            tempToken: response.data.tempToken,
+            user: response.data.user,
+          };
+        }
+
         const {
           user: userData,
           token,

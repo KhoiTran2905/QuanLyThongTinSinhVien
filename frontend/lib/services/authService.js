@@ -25,6 +25,13 @@ const authService = {
   refreshToken: function (refreshToken) {
     return apiClient.post('/auth/refresh-token', { refreshToken });
   },
+
+  forceChangePassword: function (tempToken, newPassword) {
+    return apiClient.post('/auth/force-change-password', {
+      tempToken,
+      newPassword,
+    });
+  },
 };
 
 export default authService;

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { User, Lock, Eye, EyeOff, ArrowRight, Shield, LockKeyhole } from "lucide-react"
+import authService from "@/lib/services/authService"
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
@@ -13,6 +14,13 @@ export default function LoginPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  
+  // Force Change Password State
+  const [showForceChange, setShowForceChange] = useState(false)
+  const [tempToken, setTempToken] = useState("")
+  const [forceUsername, setForceUsername] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   
   const { login, user, isLoading: authLoading } = useAuth()
   const router = useRouter()
@@ -35,11 +43,58 @@ export default function LoginPage() {
 
     try {
       const result = await login(username, password, rememberMe)
+      if (result.requirePasswordChange) {
+        setShowForceChange(true)
+        setTempToken(result.tempToken)
+        setForceUsername(result.user.username)
+        return
+      }
       if (!result.success) {
         setError(result.message)
       }
     } catch (err) {
       setError("Đã xảy ra lỗi. Vui lòng thử lại sau.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleForceChangePassword = async (e) => {
+    e.preventDefault()
+    setError("")
+    
+    if (newPassword !== confirmPassword) {
+      setError("Mật khẩu xác nhận không khớp.")
+      return
+    }
+    
+    const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+    if (!strongPasswordRegex.test(newPassword)) {
+      setError("Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ cái, số và ký tự đặc biệt.")
+      return
+    }
+    
+    setIsLoading(true)
+    try {
+      const response = await authService.forceChangePassword(tempToken, newPassword)
+      const { user, accessToken, refreshToken } = response.data
+      
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ptit_token", accessToken)
+        if (refreshToken) {
+          localStorage.setItem("ptit_refresh_token", refreshToken)
+        }
+        localStorage.setItem("ptit_user", JSON.stringify(user))
+      }
+      
+      // Reload page to re-initialize authContext
+      if (user.role === "admin") {
+        window.location.href = "/admin"
+      } else {
+        window.location.href = "/student"
+      }
+    } catch (err) {
+      setError(err.message || "Lỗi khi đổi mật khẩu.")
     } finally {
       setIsLoading(false)
     }
@@ -113,99 +168,177 @@ export default function LoginPage() {
       {/* Right Form */}
       <div className="login-form-panel">
         <div className="login-form-container">
-          <h2 className="login-form-title">Đăng nhập</h2>
+          {showForceChange ? (
+            <>
+              <h2 className="login-form-title">Đổi mật khẩu bắt buộc</h2>
+              <p style={{marginBottom: "1.5rem", color: "var(--muted-foreground)", fontSize: "14px"}}>
+                Xin chào <strong>{forceUsername}</strong>, đây là lần đăng nhập đầu tiên. Bạn bắt buộc phải đổi mật khẩu để bảo vệ tài khoản.
+              </p>
 
-          {error && (
-            <div className="form-error">
-              {error}
-            </div>
-          )}
+              <form onSubmit={handleForceChangePassword} className="login-form">
+                {/* New Password Field */}
+                <div className="form-group">
+                  <label className="form-label">Mật khẩu mới</label>
+                  <div className="form-input-wrapper">
+                    <Lock className="form-input-icon" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      className="form-input"
+                      placeholder="Mật khẩu mới..."
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="form-input-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff /> : <Eye />}
+                    </button>
+                  </div>
+                </div>
 
-          <form className="login-form" onSubmit={handleSubmit}>
-            {/* Username */}
-            <div className="form-group">
-              <label className="form-label">Tên đăng nhập</label>
-              <div className="form-input-wrapper">
-                <User className="form-input-icon" />
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Nhập tên đăng nhập..."
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+                {/* Confirm Password Field */}
+                <div className="form-group">
+                  <label className="form-label">Xác nhận mật khẩu</label>
+                  <div className="form-input-wrapper">
+                    <Lock className="form-input-icon" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      className="form-input"
+                      placeholder="Nhập lại mật khẩu..."
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
 
-            {/* Password */}
-            <div className="form-group">
-              <label className="form-label">Mật khẩu</label>
-              <div className="form-input-wrapper">
-                <Lock className="form-input-icon" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  className="form-input"
-                  placeholder="Nhập mật khẩu..."
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                {/* Error Message */}
+                {error && (
+                  <div className="form-error">
+                    {error}
+                  </div>
+                )}
+
+                {/* Submit Button */}
                 <button
-                  type="button"
-                  className="form-input-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
+                  type="submit"
+                  className="login-submit-btn"
+                  disabled={isLoading}
                 >
-                  {showPassword ? <EyeOff /> : <Eye />}
+                  {isLoading ? (
+                    <span className="login-loading">
+                      <span className="spinner"></span>
+                      Đang cập nhật...
+                    </span>
+                  ) : (
+                    <>
+                      Đổi mật khẩu & Đăng nhập
+                      <ArrowRight />
+                    </>
+                  )}
                 </button>
-              </div>
-            </div>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2 className="login-form-title">Đăng nhập</h2>
 
-            {/* Options Row */}
-            <div className="form-options">
-              <label className="form-checkbox">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                />
-                Ghi nhớ đăng nhập
-              </label>
-              <a href="#" className="form-link" onClick={(e) => { e.preventDefault(); setShowForgotPassword(true); }}>Quên mật khẩu?</a>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              className="login-submit-btn"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <span className="login-loading">
-                  <span className="spinner"></span>
-                  Đang đăng nhập...
-                </span>
-              ) : (
-                <>
-                  Đăng nhập hệ thống
-                  <ArrowRight />
-                </>
+              {error && (
+                <div className="form-error">
+                  {error}
+                </div>
               )}
-            </button>
 
-            {/* Security Info */}
-            <div className="login-security">
-              <span className="login-security-item">
-                <Shield />
-                Kết nối bảo mật SSL
-              </span>
-              <span className="login-security-divider">•</span>
-              <span className="login-security-item">
-                <LockKeyhole />
-                Dữ liệu mã hoá
-              </span>
-            </div>
-          </form>
+              <form className="login-form" onSubmit={handleSubmit}>
+                {/* Username */}
+                <div className="form-group">
+                  <label className="form-label">Tên đăng nhập</label>
+                  <div className="form-input-wrapper">
+                    <User className="form-input-icon" />
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Nhập tên đăng nhập..."
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div className="form-group">
+                  <label className="form-label">Mật khẩu</label>
+                  <div className="form-input-wrapper">
+                    <Lock className="form-input-icon" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      className="form-input"
+                      placeholder="Nhập mật khẩu..."
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="form-input-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff /> : <Eye />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Options Row */}
+                <div className="form-options">
+                  <label className="form-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                    />
+                    Ghi nhớ đăng nhập
+                  </label>
+                  <a href="#" className="form-link" onClick={(e) => { e.preventDefault(); setShowForgotPassword(true); }}>Quên mật khẩu?</a>
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  className="login-submit-btn"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <span className="login-loading">
+                      <span className="spinner"></span>
+                      Đang đăng nhập...
+                    </span>
+                  ) : (
+                    <>
+                      Đăng nhập hệ thống
+                      <ArrowRight />
+                    </>
+                  )}
+                </button>
+
+                {/* Security Info */}
+                <div className="login-security">
+                  <span className="login-security-item">
+                    <Shield />
+                    Kết nối bảo mật SSL
+                  </span>
+                  <span className="login-security-divider">•</span>
+                  <span className="login-security-item">
+                    <LockKeyhole />
+                    Dữ liệu mã hoá
+                  </span>
+                </div>
+              </form>
+            </>
+          )}
         </div>
       </div>
       {/* Forgot Password Modal */}
